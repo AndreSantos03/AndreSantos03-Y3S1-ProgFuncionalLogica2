@@ -31,9 +31,9 @@ stack2Str = intercalate "," . reverse . map showStackVal
 
 showStackVal :: StackVal -> String
 showStackVal (IVal n) = show n
-showStackVal (BVal True) = "tt"
-showStackVal (BVal False) = "ff"
+showStackVal (BVal b) = show b
 showStackVal (TVal s) = s
+
 
 
 state2Str :: State -> String
@@ -42,10 +42,9 @@ state2Str (_, store) =
   where
     showVarVal :: (String, StackVal) -> String
     showVarVal (var, IVal n) = var ++ "=" ++ show n
-    showVarVal (var, BVal True) = var ++ "=tt"
-    showVarVal (var, BVal False) = var ++ "=ff"
-    showVarVal (var, TVal s) = var ++ "=" ++ s
-
+    showVarVal (var, BVal True) = var ++ "=True"
+    showVarVal (var, BVal False) = var ++ "=False"
+    showVarVal (var, TVal s) = var ++ "=" ++ s  -- This line can actually be removed if you're not using TVal anymore.
 
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
@@ -63,10 +62,10 @@ run (Mult:code, IVal n1 : IVal n2 : stack, state) =
     run (code, IVal (n1 * n2) : stack, state)
 run (Tru:code, stack, state) =
     trace ("Tru") $
-    run (code, tt : stack, state)
+    run (code, BVal True : stack, state)
 run (Fals:code, stack, state) =
     trace ("Fals") $
-    run (code, ff : stack, state)
+    run (code, BVal False : stack, state)
 run ((Store var):code, val:stack, (s, store)) =
     trace ("Store " ++ var) $
     run (code, stack, (s, (var, val) : store))
@@ -80,14 +79,17 @@ testAssembler code = (stack2Str stack, state2Str state)
 
 main :: IO ()
 main = do
-  let (stackStr, stateStr) = testAssembler [Push 10,Push 4,Push 3,Sub,Mult] 
+  let testResult = testAssembler [Fals, Push 3, Tru, Store "var", Store "a", Store "someVar"]
+  let (stackStr, stateStr) = testResult -- Unpack the tuple into stackStr and stateStr
   putStrLn "Stack:"
-  putStrLn stackStr
+  putStrLn stackStr -- Corrected to use stackStr
   putStrLn "State:"
-  putStrLn stateStr
-  let expectedResult = ("-10","")
-  print (stackStr == (fst expectedResult))  -- Compare stack string to expected stack string
-  print (stateStr == (snd expectedResult))  -- Compare state string to expected state string
-  print stackStr  -- Print the actual stack string
-  print stateStr  -- Print the actual state string
-
+  putStrLn stateStr -- Corrected to use stateStr
+  let expectedResult = ("", "a=3,someVar=False,var=True")
+  print (testResult == expectedResult) -- This compares the entire tuple
+  -- The following lines are likely not necessary if the above print statement is what you want
+  -- print (stackStr == fst expectedResult) -- Compare stack string to expected stack string
+  -- print (stateStr == snd expectedResult) -- Compare state string to expected state string
+  -- If you still want to print stackStr and stateStr separately, you can uncomment these lines:
+  -- print stackStr  -- Print the actual stack string
+  -- print stateStr  -- Print the actual state string
