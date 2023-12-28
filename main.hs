@@ -2,6 +2,8 @@ import Data.Char (toLower, isDigit, isAlpha, isLower,isSpace)
 import Data.List (intercalate, sortBy)
 import Data.Ord (comparing)
 import Debug.Trace (trace)
+import System.IO.Unsafe (unsafePerformIO)
+
 
 
 data Inst =
@@ -194,13 +196,15 @@ compile statements = concatMap compileStm statements
 lexer :: String -> [String]
 lexer [] = []
 lexer (c:cs)
-  | c `elem` "(){}[]:;" = [c] : lexer cs
+  | c `elem` "(){}[];" = [c] : lexer cs
   | isSpace c = lexer (dropWhile isSpace cs)
+  | c == ':' && not (null cs) && head cs == '=' =
+    [c, head cs] : lexer (drop 2 cs)
   | otherwise = let (token, rest) = break (\x -> isSpace x || x `elem` "(){}[]:;") (c:cs)
                 in token : lexer rest
 
 
--- Parses a list of statements from a list of tokens.
+
 parseStms :: [String] -> Either String ([Stm], [String])
 parseStms [] = Right ([], [])
 parseStms tokens = parseStms' tokens []
@@ -209,7 +213,9 @@ parseStms' :: [String] -> [Stm] -> Either String ([Stm], [String])
 parseStms' [] stms = Right (reverse stms, [])
 parseStms' tokens stms = do
   (stm, rest) <- parseStm tokens
-  parseStms' rest (stm : stms)
+  case rest of
+    ";" : rest' -> parseStms' rest' (stm : stms)
+    _ -> Right (reverse (stm : stms), rest)
 
 parseStm :: [String] -> Either String (Stm, [String])
 parseStm [] = Left "parseStm: unexpected end of input"
@@ -220,7 +226,7 @@ parseStm (var : ":=" : rest) = do
     _ -> Left $ "parseStm: expected semicolon after assignment, got " ++ show rest'
 parseStm _ = Left "parseStm: unexpected tokens"
 
--- Parses an arithmetic expression
+
 parseAexp :: [String] -> Either String (Aexp, [String])
 parseAexp tokens = parseAddSub tokens
 
@@ -270,12 +276,25 @@ parseTerm (x:xs)
 
 
 
-parse :: String -> [Stm]
+{- parse :: String -> [Stm]
 parse str =
   let tokens = lexer str
+      tokensStr = trace ("Tokens in parse: " ++ show tokens) tokens
+
   in case parseStms tokens of
        Left err -> error $ "Parsing error: " ++ err
        Right (stms, _) -> stms
+ -}
+
+parse :: String -> [Stm]
+parse str =
+  let tokens = lexer str
+      debugTokens = trace ("Tokens in parse: " ++ show tokens) tokens
+  in unsafePerformIO $ do
+       putStrLn $ "Tokens in parse: " ++ show tokens  -- Directly print tokens
+       case parseStms tokens of
+         Left err -> error $ "Parsing error: " ++ err
+         Right (stms, _) -> return stms
 
 testParser :: String -> (String, String)
 testParser programCode = (stack2Str stack, state2Str state)
