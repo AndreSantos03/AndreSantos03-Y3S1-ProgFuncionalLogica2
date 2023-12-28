@@ -61,25 +61,26 @@ getConditionResult _ = error "Condition did not evaluate to a boolean value"
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
 run ((Push n):code, stack, state) =
-    trace ("Push " ++ show n) $
-    run (code, IVal n : stack, state)
+    -- trace ("Push " ++ show n) $
+    trace ("Push " ++ show n ++ " | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
+    run (code, IVal (abs n) : stack, state)
 run (Add:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Add") $
+    trace ("Add | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
     run (code, IVal (n1 + n2) : stack, state)
 run (Sub:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Sub") $
+    trace ("Sub | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
     run (code, IVal (n1 - n2) : stack, state)
 run (Mult:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Mult") $
+    trace ("Mult | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
     run (code, IVal (n1 * n2) : stack, state)
 run (Tru:code, stack, state) =
-    trace ("Tru") $
+    trace ("Tru | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
     run (code, BVal True : stack, state)
 run (Fals:code, stack, state) =
-    trace ("Fals") $
+    trace ("Fals | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
     run (code, BVal False : stack, state)
 run ((Store var):code, val:stack, (s, store)) =
-    trace ("Store " ++ var ++ " " ++ showStackVal val ++ " Pre-store: " ++ state2Str (s, store)) $
+    trace ("Store " ++ var ++ " " ++ showStackVal val ++ " Pre-store: " ++ state2Str (s, store) ++ " | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
     let updatedStore = updateStore var val store
     in trace ("Post-store: " ++ state2Str (s, updatedStore)) $
        run (code, stack, (s, updatedStore))
@@ -90,18 +91,18 @@ run ((Store var):code, val:stack, (s, store)) =
       | otherwise = (v, sVal) : updateStore var val vs
 run ((Fetch varName):code, stack, state@(_, store)) =
     case lookup varName store of
-        Just val -> trace ("Fetch " ++ varName) $ run (code, val : stack, state)
+        Just val -> trace ("Fetch " ++ varName ++ " | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $ run (code, val : stack, state)
         Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
 run (Neg:code, BVal b : stack, state) =
-    trace ("Neg") $
+    trace ("Neg | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
     run (code, BVal (not b) : stack, state)
 run (Neg:code, stack, state) =
     error "Neg instruction expects a boolean value on top of the stack"
 run (Equ:code, v1 : v2 : stack, state) =
-    trace ("Equ") $
+    trace ("Equ | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
     run (code, BVal (v1 == v2) : stack, state)
 run (Le:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Le") $
+    trace ("Le | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
     run (code, BVal (n1 <= n2) : stack, state)  -- Ensure that n1 is the last pushed value
 run (Le:_, _, _) =
     error "Le instruction requires two integer values on top of the stack"
@@ -112,12 +113,25 @@ run (Loop condition body:restCode, stack, state) =
             in run (Loop condition body:restCode, bodyStack, bodyState)
        else run (restCode, stack, state)
 run (And:code, BVal b1 : BVal b2 : stack, state) =
-    trace ("And") $
+    trace ("And | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
     run (code, BVal (b1 && b2) : stack, state)
 run (And:_, _, _) =
     error "Run-time error: 'And' operation requires two boolean values on top of the stack"
 
 -- Implement other instructions as needed.
+
+-- Tests
+testExample1 :: IO ()
+testExample1 = do
+  let initialState = ([], [("x", IVal 3)]) 
+      program = [Push (-1), Fetch "x", Add, Store "x"] 
+      expectedState = ([], [("x", IVal 4)])
+
+  let (_, _, finalState) = run (program, [], initialState)
+
+  if finalState == expectedState
+    then putStrLn "Test Example 1 was passed"
+    else putStrLn "Test Example 1 failed"
 
 
 
