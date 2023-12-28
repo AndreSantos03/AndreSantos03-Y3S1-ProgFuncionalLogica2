@@ -31,7 +31,7 @@ testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
 -- Examples:
--- testAssembler [Push 10,Push 4,Push 3,Sub,Mult] == ("-10","")
+-- c
 -- testAssembler [Fals,Push 3,Tru,Store "var",Store "a", Store "someVar"] == ("","a=3,someVar=False,var=True")
 -- testAssembler [Fals,Store "var",Fetch "var"] == ("False","var=False")
 -- testAssembler [Push (-20),Tru,Fals] == ("False,True,-20","")

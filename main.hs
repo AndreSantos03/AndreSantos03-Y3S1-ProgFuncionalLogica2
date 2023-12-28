@@ -125,33 +125,24 @@ testAssembler :: Code -> (String, String)
 testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
+
 main :: IO ()
 main = do
-    putStrLn "Testing parseStm:"
-    putStrLn "-------------------"
-
-    let input1 = ["x", ":=", "5", ";"]
-    let input2 = ["y", ":=", "x", "+", "3",";"]
-    let input3 = ["z", ":=", "(", "x", "+", "y", ")", ";"]
-    let input4 = ["a", ":=", "5", "+", ";"]  -- Invalid due to missing right operand
-    let input5 = ["b", ":=", "5", "7", "+", "3", ";"]  -- Invalid due to unexpected tokens
+    let input1 = "x := 5; y := (3 + 2);"
+        input2 = "if (x == y) then (x := 1) else (x := 0);"
+        input3 = "while (x <= 10) do (x := (x + 1));"
+        
+    putStrLn "Testing lexer:"
+    putStrLn "----------------"
 
     putStrLn "Input 1:"
-    print (parseStm input1)
+    print (lexer input1)
 
     putStrLn "Input 2:"
-    print (parseStm input2)
+    print (lexer input2)
 
     putStrLn "Input 3:"
-    print (parseStm input3)
-
-    putStrLn "Input 4:"
-    print (parseStm input4)
-
-    putStrLn "Input 5:"
-    print (parseStm input5)
-
-
+    print (lexer input3)
 
 data Aexp = ALit Integer
           | AVar String
@@ -205,62 +196,90 @@ lexer = words . map (\c -> if c `elem` ";()" then ' ' else c)
 
 
 -- Parses a list of statements from a list of tokens.
-parseStms :: [String] -> ([Stm], [String])
-parseStms [] = ([], [])
-parseStms tokens =
-  let (stm, rest) = parseStm tokens
-      (stms, rest') = parseStms rest
-  in (stm : stms, rest')  -- Recursively build the list of statements
+parseStms :: [String] -> Either String ([Stm], [String])
+parseStms [] = Right ([], [])
+parseStms tokens = parseStms' tokens []
 
+parseStms' :: [String] -> [Stm] -> Either String ([Stm], [String])
+parseStms' [] stms = Right (reverse stms, [])
+parseStms' tokens stms = do
+  (stm, rest) <- parseStm tokens
+  parseStms' rest (stm : stms)
 
-
-parseStm :: [String] -> (Stm, [String])
-parseStm tokens = 
-  let debugTokens = show tokens
-      debugResult = case tokens of
-        (var : ":=" : rest) ->
-          case parseAexp rest of
-            Left errMsg -> error errMsg  -- Handle parsing error here
-            Right (expr, rest') ->
-              case rest' of
-                ";" : rest'' -> (SAssign var expr, rest'')
-                _ -> error $ "parseStm: expected semicolon after assignment, got " ++ show rest'
-        _ -> error $ "parseStm: unexpected tokens: " ++ show tokens
-  in trace ("parseStm called with tokens: " ++ debugTokens ++ " and produced: " ++ show debugResult) debugResult
-
+parseStm :: [String] -> Either String (Stm, [String])
+parseStm [] = Left "parseStm: unexpected end of input"
+parseStm (var : ":=" : rest) = do
+  (expr, rest') <- parseAexp rest
+  case rest' of
+    ";" : rest'' -> Right (SAssign var expr, rest'')
+    _ -> Left $ "parseStm: expected semicolon after assignment, got " ++ show rest'
+parseStm _ = Left "parseStm: unexpected tokens"
 
 -- Parses an arithmetic expression
 parseAexp :: [String] -> Either String (Aexp, [String])
-parseAexp [] = Left "parseAexp: unexpected end of input"
-parseAexp (x:xs)
+parseAexp tokens = parseAddSub tokens
+
+parseAddSub :: [String] -> Either String (Aexp, [String])
+parseAddSub tokens = do
+  (term1, rest) <- parseMulDiv tokens
+  parseAddSub' rest term1
+
+parseAddSub' :: [String] -> Aexp -> Either String (Aexp, [String])
+parseAddSub' [] expr = Right (expr, [])
+parseAddSub' (op : tokens) expr
+  | op `elem` ["+", "-"] = do
+    (term, rest) <- parseMulDiv tokens
+    case op of
+      "+" -> parseAddSub' rest (AAdd expr term)
+      "-" -> parseAddSub' rest (ASub expr term)
+      _   -> Left "Unexpected operator"
+  | otherwise = Right (expr, op : tokens)
+
+parseMulDiv :: [String] -> Either String (Aexp, [String])
+parseMulDiv tokens = do
+  (factor1, rest) <- parseTerm tokens
+  parseMulDiv' rest factor1
+
+parseMulDiv' :: [String] -> Aexp -> Either String (Aexp, [String])
+parseMulDiv' [] expr = Right (expr, [])
+parseMulDiv' (op : tokens) expr
+  | op `elem` ["*", "/"] = do
+    (factor, rest) <- parseTerm tokens
+    case op of
+      "*" -> parseMulDiv' rest (AMul expr factor)
+      "/" -> parseMulDiv' rest (ADiv expr factor)
+      _   -> Left "Unexpected operator"
+  | otherwise = Right (expr, op : tokens)
+
+parseTerm :: [String] -> Either String (Aexp, [String])
+parseTerm [] = Left "parseTerm: unexpected end of input"
+parseTerm (x:xs)
   | all isDigit x = Right (ALit (read x), xs)
   | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
-  | x == "(" =
-      case parseAexp xs of
-        Left errMsg -> Left errMsg
-        Right (a1, op:rest2) ->
-          case parseAexp rest2 of
-            Left errMsg -> Left errMsg
-            Right (a2, ")" : rest3) ->
-              case op of
-                "+" -> Right (AAdd a1 a2, rest3)
-                "-" -> Right (ASub a1 a2, rest3)
-                "*" -> Right (AMul a1 a2, rest3)
-                _   -> Left $ "parseAexp: unknown operator " ++ op
-            _ -> Left "parseAexp: missing closing parenthesis"
-        _ -> Left "parseAexp: missing left operand"
-  | otherwise = Left $ "parseAexp: unexpected token " ++ show x
+  | x == "(" = do
+    (expr, rest) <- parseAexp xs
+    case rest of
+      (")" : tokens) -> Right (expr, tokens)
+      _ -> Left "parseTerm: missing closing parenthesis"
+  | otherwise = Left $ "parseTerm: unexpected token " ++ show x
 
 
--- Parses the entire program string into a list of statements
+
 parse :: String -> [Stm]
-parse str = 
+parse str =
   let tokens = lexer str
-      (stms, _) = parseStms tokens
-  in stms
-
+  in case parseStms tokens of
+       Left err -> error $ "Parsing error: " ++ err
+       Right (stms, _) -> stms
 
 testParser :: String -> (String, String)
 testParser programCode = (stack2Str stack, state2Str state)
   where (_, stack, state) = run(compile (parse programCode), createEmptyStack, createEmptyState)
+
+testParseFunction :: String -> IO ()
+testParseFunction programCode = do
+  putStrLn "Testing parse function:"
+  let parsedStatements = parse programCode
+  putStrLn "Parsed statements:"
+  print parsedStatements
 
