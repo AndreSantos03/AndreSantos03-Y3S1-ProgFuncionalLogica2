@@ -1,4 +1,4 @@
-import Data.Char (toLower, isDigit, isAlpha, isLower)
+import Data.Char (toLower, isDigit, isAlpha, isLower,isSpace)
 import Data.List (intercalate, sortBy)
 import Data.Ord (comparing)
 import Debug.Trace (trace)
@@ -192,7 +192,12 @@ compile :: [Stm] -> Code
 compile statements = concatMap compileStm statements
 
 lexer :: String -> [String]
-lexer = words . map (\c -> if c `elem` "()" then ' ' else c)
+lexer [] = []
+lexer (c:cs)
+  | c `elem` "(){}[]:;" = [c] : lexer cs
+  | isSpace c = lexer (dropWhile isSpace cs)
+  | otherwise = let (token, rest) = break (\x -> isSpace x || x `elem` "(){}[]:;") (c:cs)
+                in token : lexer rest
 
 
 -- Parses a list of statements from a list of tokens.
