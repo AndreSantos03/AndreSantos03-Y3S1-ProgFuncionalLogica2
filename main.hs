@@ -139,31 +139,36 @@ testAssembler :: Code -> (String, String)
 testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
+
 main :: IO ()
 main = do
-    let input1 = ["5"]
-        input2 = ["x"]
-        input3 = ["(", "5", "+", "3", ")"]
-        input4 = ["(", "x", "+", "y", ")"]
-        input5 = ["(", "5", "+", "3"]
-
-    putStrLn "Testing parseAexp:"
+    putStrLn "Testing parseStm:"
     putStrLn "-------------------"
 
+    let input1 = ["x", ":=", "5", ";"]
+    let input2 = ["y", ":=", "x", "+", "3"]
+    let input25 = ["y", ":=", "x", "+", "3",";"]
+    let input3 = ["z", ":=", "(", "x", "+", "y", ")", ";"]
+    let input4 = ["a", ":=", "5", "+", ";"]  -- Invalid due to missing right operand
+    let input5 = ["b", ":=", "5", "7", "+", "3", ";"]  -- Invalid due to unexpected tokens
+
     putStrLn "Input 1:"
-    print (parseAexp input1)
+    print (parseStm input1)
 
     putStrLn "Input 2:"
-    print (parseAexp input2)
+    print (parseStm input2)
+
+    putStrLn "Input 25:"
+    print (parseStm input25)
 
     putStrLn "Input 3:"
-    print (parseAexp input3)
+    print (parseStm input3)
 
     putStrLn "Input 4:"
-    print (parseAexp input4)
+    print (parseStm input4)
 
     putStrLn "Input 5:"
-    print (parseAexp input5)
+    print (parseStm input5)
 
 
 
@@ -241,7 +246,7 @@ parseStms tokens =
 
 
 
-{- parseStm :: [String] -> (Stm, [String])
+parseStm :: [String] -> (Stm, [String])
 parseStm tokens = 
   let debugTokens = show tokens
       debugResult = case tokens of
@@ -277,53 +282,6 @@ parseAexp (x:xs)
             _ -> Left "parseAexp: missing closing parenthesis"
         _ -> Left "parseAexp: missing left operand"
   | otherwise = Left $ "parseAexp: unexpected token " ++ show x
- -}
-
-parseStm :: [String] -> (Stm, [String])
-parseStm tokens =
-  let debugTokens = show tokens
-      debugResult = case tokens of
-        (var : ":=" : rest) ->
-          case parseAexp rest of
-            Left errMsg -> error errMsg
-            Right (expr, ";" : rest') -> (SAssign var expr, rest')
-            _ -> error $ "parseStm: expected semicolon after assignment, got " ++ show rest'
-        _ -> error $ "parseStm: unexpected tokens: " ++ show tokens
-  in trace ("parseStm called with tokens: " ++ debugTokens ++ " and produced: " ++ show debugResult) debugResult
-
-parseAexp :: [String] -> Either String (Aexp, [String])
-parseAexp [] = Left "parseAexp: unexpected end of input"
-parseAexp (x:xs)
-  | all isDigit x = Right (ALit (read x), xs)
-  | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
-  | x == "(" =
-      case parseAexp xs of
-        Left errMsg -> Left errMsg
-        Right (a1, op:rest2) ->
-          case parseAexp rest2 of
-            Left errMsg -> Left errMsg
-            Right (a2, ")" : rest3) ->
-              case op of
-                "+" -> Right (AAdd a1 a2, rest3)
-                "-" -> Right (ASub a1 a2, rest3)
-                "*" -> Right (AMul a1 a2, rest3)
-                _   -> Left $ "parseAexp: unknown operator " ++ op
-            _ -> Left "parseAexp: missing closing parenthesis"
-        _ -> Left "parseAexp: missing left operand"
-  | otherwise = Left $ "parseAexp: unexpected token " ++ show x
-
-testParseAexp :: IO ()
-testParseAexp = do
-    putStrLn "Testing parseAexp..."
-    let testCases = [
-            ["5"], -- ALit
-            ["x"], -- AVar
-            ["(", "5", "+", "3", ")"], -- AAdd
-            ["(", "x", "-", "y", ")"], -- ASub
-            ["7", "*", "4"], -- AMul
-            ["(","7", "*", "4", ")"] -- AMul
-                    ]
-    mapM_ (\testCase -> putStrLn $ "Input: " ++ show testCase ++ " Result: " ++ show (parseAexp testCase)) testCases
 
 -- Parses the entire program string into a list of statements
 parse :: String -> [Stm]
