@@ -1,7 +1,8 @@
-import Data.Char (toLower)
+import Data.Char (toLower, isDigit, isAlpha, isLower)
 import Data.List (intercalate, sortBy)
 import Data.Ord (comparing)
 import Debug.Trace (trace)
+
 
 data Inst =
   Push Integer | Add | Mult | Sub | Tru | Fals | Equ | Le | And | Neg | Fetch String | Store String | Noop |
@@ -126,17 +127,140 @@ testAssembler code = (stack2Str stack, state2Str state)
 
 main :: IO ()
 main = do
-  let testResult = testAssembler [Push 10,Store "i",Push 1,Store "fact",Loop [Push 1,Fetch "i",Equ,Neg] [Fetch "i",Fetch "fact",Mult,Store "fact",Push 1,Fetch "i",Sub,Store "i"]]
-  let (stackStr, stateStr) = testResult -- Unpack the tuple into stackStr and stateStr
-  putStrLn "Stack:"
-  putStrLn stackStr -- Corrected to use stackStr
-  putStrLn "State:"
-  putStrLn stateStr -- Corrected to use stateStr
-  let expectedResult = ("","fact=3628800,i=1")
-  print (testResult == expectedResult) -- This compares the entire tuple
-  -- The following lines are likely not necessary if the above print statement is what you want
-  print (stackStr == fst expectedResult) -- Compare stack string to expected stack string
-  print (stateStr == snd expectedResult) -- Compare state string to expected state string
-  -- If you still want to print stackStr and stateStr separately, you can uncomment these lines:
-  print stackStr  -- Print the actual stack string
-  print stateStr  -- Print the actual state string
+    putStrLn "Testing parseStm:"
+    putStrLn "-------------------"
+
+    let input1 = ["x", ":=", "5", ";"]
+    let input2 = ["y", ":=", "x", "+", "3"]
+    let input3 = ["z", ":=", "(", "x", "+", "y", ")", ";"]
+    let input4 = ["a", ":=", "5", "+", ";"]  -- Invalid due to missing right operand
+    let input5 = ["b", ":=", "5", "7", "+", "3", ";"]  -- Invalid due to unexpected tokens
+
+    putStrLn "Input 1:"
+    print (parseStm input1)
+
+    putStrLn "Input 2:"
+    print (parseStm input2)
+
+    putStrLn "Input 3:"
+    print (parseStm input3)
+
+    putStrLn "Input 4:"
+    print (parseStm input4)
+
+    putStrLn "Input 5:"
+    print (parseStm input5)
+
+
+
+data Aexp = ALit Integer
+          | AVar String
+          | AAdd Aexp Aexp
+          | ASub Aexp Aexp
+          | AMul Aexp Aexp
+          | ADiv Aexp Aexp
+          deriving Show
+
+data Bexp = BLit Bool
+          | BEq Aexp Aexp
+          | BLe Aexp Aexp
+          | BAnd Bexp Bexp
+          | BOr Bexp Bexp
+          | BNot Bexp
+          deriving Show
+
+data Stm = SAssign String Aexp
+         | SSeq Stm Stm
+         | SIf Bexp Stm Stm
+         | SWhile Bexp Stm
+         deriving Show
+
+compileAexp :: Aexp -> Code
+compileAexp (ALit n) = [Push n]
+compileAexp (AVar x) = [Fetch x]
+compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
+compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
+compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
+
+compileBexp :: Bexp -> Code
+compileBexp (BLit b) = [if b then Tru else Fals]
+compileBexp (BEq a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Equ]
+compileBexp (BLe a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Le]
+compileBexp (BAnd b1 b2) = compileBexp b1 ++ compileBexp b2 ++ [And]
+compileBexp (BNot b) = compileBexp b ++ [Neg]
+
+-- Compiles a single statement into Code
+compileStm :: Stm -> Code
+compileStm (SAssign x a) = compileAexp a ++ [Store x]
+compileStm (SSeq s1 s2) = compileStm s1 ++ compileStm s2
+compileStm (SIf b s1 s2) = compileBexp b ++ [Branch (compileStm s1) (compileStm s2)]
+compileStm (SWhile b s) = [Loop (compileBexp b) (compileStm s)]
+
+-- Compiles a list of statements into Code
+compile :: [Stm] -> Code
+compile statements = concatMap compileStm statements
+
+lexer :: String -> [String]
+lexer = words . map (\c -> if c `elem` ";()" then ' ' else c)
+
+
+-- Parses a list of statements from a list of tokens.
+parseStms :: [String] -> ([Stm], [String])
+parseStms [] = ([], [])
+parseStms tokens =
+  let (stm, rest) = parseStm tokens
+      (stms, rest') = parseStms rest
+  in (stm : stms, rest')  -- Recursively build the list of statements
+
+
+
+parseStm :: [String] -> (Stm, [String])
+parseStm tokens = 
+  let debugTokens = show tokens
+      debugResult = case tokens of
+        (var : ":=" : rest) ->
+          case parseAexp rest of
+            Left errMsg -> error errMsg  -- Handle parsing error here
+            Right (expr, rest') ->
+              case rest' of
+                ";" : rest'' -> (SAssign var expr, rest'')
+                _ -> error $ "parseStm: expected semicolon after assignment, got " ++ show rest'
+        _ -> error $ "parseStm: unexpected tokens: " ++ show tokens
+  in trace ("parseStm called with tokens: " ++ debugTokens ++ " and produced: " ++ show debugResult) debugResult
+
+
+-- Parses an arithmetic expression
+parseAexp :: [String] -> Either String (Aexp, [String])
+parseAexp [] = Left "parseAexp: unexpected end of input"
+parseAexp (x:xs)
+  | all isDigit x = Right (ALit (read x), xs)
+  | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
+  | x == "(" =
+      case parseAexp xs of
+        Left errMsg -> Left errMsg
+        Right (a1, op:rest2) ->
+          case parseAexp rest2 of
+            Left errMsg -> Left errMsg
+            Right (a2, ")" : rest3) ->
+              case op of
+                "+" -> Right (AAdd a1 a2, rest3)
+                "-" -> Right (ASub a1 a2, rest3)
+                "*" -> Right (AMul a1 a2, rest3)
+                _   -> Left $ "parseAexp: unknown operator " ++ op
+            _ -> Left "parseAexp: missing closing parenthesis"
+        _ -> Left "parseAexp: missing left operand"
+  | otherwise = Left $ "parseAexp: unexpected token " ++ show x
+
+
+-- Parses the entire program string into a list of statements
+parse :: String -> [Stm]
+parse str = 
+  let tokens = lexer str
+      (stms, _) = parseStms tokens
+  in stms
+
+
+testParser :: String -> (String, String)
+testParser programCode = (stack2Str stack, state2Str state)
+  where (_, stack, state) = run(compile (parse programCode), createEmptyStack, createEmptyState)
+
