@@ -63,7 +63,7 @@ run ([], stack, state) = ([], stack, state)
 run ((Push n):code, stack, state) =
     -- trace ("Push " ++ show n) $
     trace ("Push " ++ show n ++ " | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
-    run (code, IVal (abs n) : stack, state)
+    run (code, IVal n : stack, state)
 run (Add:code, IVal n1 : IVal n2 : stack, state) =
     trace ("Add | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
     run (code, IVal (n1 + n2) : stack, state)
@@ -217,6 +217,19 @@ compile statements = concatMap compileStm statements
 lexer :: String -> [String]
 lexer = words . map (\c -> if c `elem` ";()" then ' ' else c)
 
+{- -- Quick Lexer test
+testLexer :: IO ()
+testLexer = do
+    let testCases = [
+            "23 + 4 * 421",
+            "(x + y) * 5",
+            "if (x < 10) then y else 0",
+            "x := 5; y := x + 10"
+            ]
+    putStrLn "Testing lexer..."
+    mapM_ (\expr -> putStrLn $ "Expression: " ++ expr ++ " Tokens: " ++ show (lexer expr)) testCases
+ -}
+
 
 -- Parses a list of statements from a list of tokens.
 parseStms :: [String] -> ([Stm], [String])
@@ -228,7 +241,7 @@ parseStms tokens =
 
 
 
-parseStm :: [String] -> (Stm, [String])
+{- parseStm :: [String] -> (Stm, [String])
 parseStm tokens = 
   let debugTokens = show tokens
       debugResult = case tokens of
@@ -236,9 +249,9 @@ parseStm tokens =
           case parseAexp rest of
             Left errMsg -> error errMsg  -- Handle parsing error here
             Right (expr, rest') ->
-              case rest' of
+              case rest' of 
                 ";" : rest'' -> (SAssign var expr, rest'')
-                _ -> error $ "parseStm: expected semicolon after assignment, got " ++ show rest'
+                _ -> (SAssign var expr, rest')
         _ -> error $ "parseStm: unexpected tokens: " ++ show tokens
   in trace ("parseStm called with tokens: " ++ debugTokens ++ " and produced: " ++ show debugResult) debugResult
 
@@ -264,7 +277,53 @@ parseAexp (x:xs)
             _ -> Left "parseAexp: missing closing parenthesis"
         _ -> Left "parseAexp: missing left operand"
   | otherwise = Left $ "parseAexp: unexpected token " ++ show x
+ -}
 
+parseStm :: [String] -> (Stm, [String])
+parseStm tokens =
+  let debugTokens = show tokens
+      debugResult = case tokens of
+        (var : ":=" : rest) ->
+          case parseAexp rest of
+            Left errMsg -> error errMsg
+            Right (expr, ";" : rest') -> (SAssign var expr, rest')
+            _ -> error $ "parseStm: expected semicolon after assignment, got " ++ show rest'
+        _ -> error $ "parseStm: unexpected tokens: " ++ show tokens
+  in trace ("parseStm called with tokens: " ++ debugTokens ++ " and produced: " ++ show debugResult) debugResult
+
+parseAexp :: [String] -> Either String (Aexp, [String])
+parseAexp [] = Left "parseAexp: unexpected end of input"
+parseAexp (x:xs)
+  | all isDigit x = Right (ALit (read x), xs)
+  | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
+  | x == "(" =
+      case parseAexp xs of
+        Left errMsg -> Left errMsg
+        Right (a1, op:rest2) ->
+          case parseAexp rest2 of
+            Left errMsg -> Left errMsg
+            Right (a2, ")" : rest3) ->
+              case op of
+                "+" -> Right (AAdd a1 a2, rest3)
+                "-" -> Right (ASub a1 a2, rest3)
+                "*" -> Right (AMul a1 a2, rest3)
+                _   -> Left $ "parseAexp: unknown operator " ++ op
+            _ -> Left "parseAexp: missing closing parenthesis"
+        _ -> Left "parseAexp: missing left operand"
+  | otherwise = Left $ "parseAexp: unexpected token " ++ show x
+
+testParseAexp :: IO ()
+testParseAexp = do
+    putStrLn "Testing parseAexp..."
+    let testCases = [
+            ["5"], -- ALit
+            ["x"], -- AVar
+            ["(", "5", "+", "3", ")"], -- AAdd
+            ["(", "x", "-", "y", ")"], -- ASub
+            ["7", "*", "4"], -- AMul
+            ["(","7", "*", "4", ")"] -- AMul
+                    ]
+    mapM_ (\testCase -> putStrLn $ "Input: " ++ show testCase ++ " Result: " ++ show (parseAexp testCase)) testCases
 
 -- Parses the entire program string into a list of statements
 parse :: String -> [Stm]
