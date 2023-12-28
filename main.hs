@@ -61,26 +61,25 @@ getConditionResult _ = error "Condition did not evaluate to a boolean value"
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
 run ((Push n):code, stack, state) =
-    -- trace ("Push " ++ show n) $
-    trace ("Push " ++ show n ++ " | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
+    trace ("Push " ++ show n) $
     run (code, IVal n : stack, state)
 run (Add:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Add | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
+    trace ("Add") $
     run (code, IVal (n1 + n2) : stack, state)
 run (Sub:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Sub | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
+    trace ("Sub") $
     run (code, IVal (n1 - n2) : stack, state)
 run (Mult:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Mult | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
+    trace ("Mult") $
     run (code, IVal (n1 * n2) : stack, state)
 run (Tru:code, stack, state) =
-    trace ("Tru | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
+    trace ("Tru") $
     run (code, BVal True : stack, state)
 run (Fals:code, stack, state) =
-    trace ("Fals | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack ++ " | State: " ++ state2Str state) $
+    trace ("Fals") $
     run (code, BVal False : stack, state)
 run ((Store var):code, val:stack, (s, store)) =
-    trace ("Store " ++ var ++ " " ++ showStackVal val ++ " Pre-store: " ++ state2Str (s, store) ++ " | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
+    trace ("Store " ++ var ++ " " ++ showStackVal val ++ " Pre-store: " ++ state2Str (s, store)) $
     let updatedStore = updateStore var val store
     in trace ("Post-store: " ++ state2Str (s, updatedStore)) $
        run (code, stack, (s, updatedStore))
@@ -91,18 +90,18 @@ run ((Store var):code, val:stack, (s, store)) =
       | otherwise = (v, sVal) : updateStore var val vs
 run ((Fetch varName):code, stack, state@(_, store)) =
     case lookup varName store of
-        Just val -> trace ("Fetch " ++ varName ++ " | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $ run (code, val : stack, state)
+        Just val -> trace ("Fetch " ++ varName) $ run (code, val : stack, state)
         Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
 run (Neg:code, BVal b : stack, state) =
-    trace ("Neg | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
+    trace ("Neg") $
     run (code, BVal (not b) : stack, state)
 run (Neg:code, stack, state) =
     error "Neg instruction expects a boolean value on top of the stack"
 run (Equ:code, v1 : v2 : stack, state) =
-    trace ("Equ | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
+    trace ("Equ") $
     run (code, BVal (v1 == v2) : stack, state)
 run (Le:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Le | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
+    trace ("Le") $
     run (code, BVal (n1 <= n2) : stack, state)  -- Ensure that n1 is the last pushed value
 run (Le:_, _, _) =
     error "Le instruction requires two integer values on top of the stack"
@@ -113,25 +112,12 @@ run (Loop condition body:restCode, stack, state) =
             in run (Loop condition body:restCode, bodyStack, bodyState)
        else run (restCode, stack, state)
 run (And:code, BVal b1 : BVal b2 : stack, state) =
-    trace ("And | Code: " ++ show code ++ " | Stack: " ++ stack2Str stack) $
+    trace ("And") $
     run (code, BVal (b1 && b2) : stack, state)
 run (And:_, _, _) =
     error "Run-time error: 'And' operation requires two boolean values on top of the stack"
 
 -- Implement other instructions as needed.
-
--- Tests
-testExample1 :: IO ()
-testExample1 = do
-  let initialState = ([], [("x", IVal 3)]) 
-      program = [Push (-1), Fetch "x", Add, Store "x"] 
-      expectedState = ([], [("x", IVal 4)])
-
-  let (_, _, finalState) = run (program, [], initialState)
-
-  if finalState == expectedState
-    then putStrLn "Test Example 1 was passed"
-    else putStrLn "Test Example 1 failed"
 
 
 
@@ -217,19 +203,6 @@ compile statements = concatMap compileStm statements
 lexer :: String -> [String]
 lexer = words . map (\c -> if c `elem` ";()" then ' ' else c)
 
-{- -- Quick Lexer test
-testLexer :: IO ()
-testLexer = do
-    let testCases = [
-            "23 + 4 * 421",
-            "(x + y) * 5",
-            "if (x < 10) then y else 0",
-            "x := 5; y := x + 10"
-            ]
-    putStrLn "Testing lexer..."
-    mapM_ (\expr -> putStrLn $ "Expression: " ++ expr ++ " Tokens: " ++ show (lexer expr)) testCases
- -}
-
 
 -- Parses a list of statements from a list of tokens.
 parseStms :: [String] -> ([Stm], [String])
@@ -241,7 +214,7 @@ parseStms tokens =
 
 
 
-{- parseStm :: [String] -> (Stm, [String])
+parseStm :: [String] -> (Stm, [String])
 parseStm tokens = 
   let debugTokens = show tokens
       debugResult = case tokens of
@@ -249,9 +222,9 @@ parseStm tokens =
           case parseAexp rest of
             Left errMsg -> error errMsg  -- Handle parsing error here
             Right (expr, rest') ->
-              case rest' of 
+              case rest' of
                 ";" : rest'' -> (SAssign var expr, rest'')
-                _ -> (SAssign var expr, rest')
+                _ -> error $ "parseStm: expected semicolon after assignment, got " ++ show rest'
         _ -> error $ "parseStm: unexpected tokens: " ++ show tokens
   in trace ("parseStm called with tokens: " ++ debugTokens ++ " and produced: " ++ show debugResult) debugResult
 
@@ -277,53 +250,7 @@ parseAexp (x:xs)
             _ -> Left "parseAexp: missing closing parenthesis"
         _ -> Left "parseAexp: missing left operand"
   | otherwise = Left $ "parseAexp: unexpected token " ++ show x
- -}
 
-parseStm :: [String] -> (Stm, [String])
-parseStm tokens =
-  let debugTokens = show tokens
-      debugResult = case tokens of
-        (var : ":=" : rest) ->
-          case parseAexp rest of
-            Left errMsg -> error errMsg
-            Right (expr, ";" : rest') -> (SAssign var expr, rest')
-            _ -> error $ "parseStm: expected semicolon after assignment, got " ++ show rest'
-        _ -> error $ "parseStm: unexpected tokens: " ++ show tokens
-  in trace ("parseStm called with tokens: " ++ debugTokens ++ " and produced: " ++ show debugResult) debugResult
-
-parseAexp :: [String] -> Either String (Aexp, [String])
-parseAexp [] = Left "parseAexp: unexpected end of input"
-parseAexp (x:xs)
-  | all isDigit x = Right (ALit (read x), xs)
-  | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
-  | x == "(" =
-      case parseAexp xs of
-        Left errMsg -> Left errMsg
-        Right (a1, op:rest2) ->
-          case parseAexp rest2 of
-            Left errMsg -> Left errMsg
-            Right (a2, ")" : rest3) ->
-              case op of
-                "+" -> Right (AAdd a1 a2, rest3)
-                "-" -> Right (ASub a1 a2, rest3)
-                "*" -> Right (AMul a1 a2, rest3)
-                _   -> Left $ "parseAexp: unknown operator " ++ op
-            _ -> Left "parseAexp: missing closing parenthesis"
-        _ -> Left "parseAexp: missing left operand"
-  | otherwise = Left $ "parseAexp: unexpected token " ++ show x
-
-testParseAexp :: IO ()
-testParseAexp = do
-    putStrLn "Testing parseAexp..."
-    let testCases = [
-            ["5"], -- ALit
-            ["x"], -- AVar
-            ["(", "5", "+", "3", ")"], -- AAdd
-            ["(", "x", "-", "y", ")"], -- ASub
-            ["7", "*", "4"], -- AMul
-            ["(","7", "*", "4", ")"] -- AMul
-                    ]
-    mapM_ (\testCase -> putStrLn $ "Input: " ++ show testCase ++ " Result: " ++ show (parseAexp testCase)) testCases
 
 -- Parses the entire program string into a list of statements
 parse :: String -> [Stm]
