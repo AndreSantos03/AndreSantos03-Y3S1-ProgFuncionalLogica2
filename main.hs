@@ -131,7 +131,7 @@ main = do
     putStrLn "-------------------"
 
     let input1 = ["x", ":=", "5", ";"]
-    let input2 = ["y", ":=", "x", "+", "3"]
+    let input2 = ["y", ":=", "x", "+", "3",";"]
     let input3 = ["z", ":=", "(", "x", "+", "y", ")", ";"]
     let input4 = ["a", ":=", "5", "+", ";"]  -- Invalid due to missing right operand
     let input5 = ["b", ":=", "5", "7", "+", "3", ";"]  -- Invalid due to unexpected tokens
