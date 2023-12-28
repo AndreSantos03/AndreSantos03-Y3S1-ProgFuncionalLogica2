@@ -192,7 +192,7 @@ compile :: [Stm] -> Code
 compile statements = concatMap compileStm statements
 
 lexer :: String -> [String]
-lexer = words . map (\c -> if c `elem` ";()" then ' ' else c)
+lexer = words . map (\c -> if c `elem` "()" then ' ' else c)
 
 
 -- Parses a list of statements from a list of tokens.
