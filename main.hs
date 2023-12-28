@@ -127,29 +127,29 @@ testAssembler code = (stack2Str stack, state2Str state)
 
 main :: IO ()
 main = do
-    putStrLn "Testing parseStm:"
+    let input1 = ["5"]
+        input2 = ["x"]
+        input3 = ["(", "5", "+", "3", ")"]
+        input4 = ["(", "x", "+", "y", ")"]
+        input5 = ["(", "5", "+", "3"]
+
+    putStrLn "Testing parseAexp:"
     putStrLn "-------------------"
 
-    let input1 = ["x", ":=", "5", ";"]
-    let input2 = ["y", ":=", "x", "+", "3"]
-    let input3 = ["z", ":=", "(", "x", "+", "y", ")", ";"]
-    let input4 = ["a", ":=", "5", "+", ";"]  -- Invalid due to missing right operand
-    let input5 = ["b", ":=", "5", "7", "+", "3", ";"]  -- Invalid due to unexpected tokens
-
     putStrLn "Input 1:"
-    print (parseStm input1)
+    print (parseAexp input1)
 
     putStrLn "Input 2:"
-    print (parseStm input2)
+    print (parseAexp input2)
 
     putStrLn "Input 3:"
-    print (parseStm input3)
+    print (parseAexp input3)
 
     putStrLn "Input 4:"
-    print (parseStm input4)
+    print (parseAexp input4)
 
     putStrLn "Input 5:"
-    print (parseStm input5)
+    print (parseAexp input5)
 
 
 
