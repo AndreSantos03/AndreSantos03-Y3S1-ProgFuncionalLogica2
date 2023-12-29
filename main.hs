@@ -7,7 +7,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 
 data Inst =
-  Push Integer | Add | Mult | Sub | Tru | Fals | Equ | Le | And | Neg | Fetch String | Store String | Noop |
+  Push Integer | Add | Mult | Sub | Tru | Fals | Equ | Le | And | Neg | Fetch String | Store String | 
   Branch Code Code | Loop Code Code
   deriving Show
 type Code = [Inst]
@@ -162,6 +162,7 @@ data Stm = SAssign String Aexp
          | SSeq Stm Stm
          | SIf Bexp Stm Stm
          | SWhile Bexp Stm
+         | Noop
          deriving Show
 
 compileAexp :: Aexp -> Code
@@ -203,32 +204,29 @@ lexer (c:cs)
   | otherwise = lexer cs
 
 
-parseStm :: [String] -> Either String ([Stm], [String])
-parseStm [] = Right ([], [])
+parseStm :: [String] -> Either String (Stm, [String])
+parseStm [] = Right (Noop, [])
+  -- Assuming Noop is a valid no-operation statement
 parseStm tokens = parseStm' tokens []
 
-parseStm' :: [String] -> [Stm] -> Either String ([Stm], [String])
-parseStm' [] stms = Right (reverse stms, [])
+parseStm' :: [String] -> [Stm] -> Either String (Stm, [String])
+parseStm' [] stms = Right (foldr1 SSeq (reverse stms), [])
 parseStm' tokens stms = do
-  case tokens of
-    -- ("if":rest) -> do
-    (var : ":=" : rest) -> do
-      (stm, rest') <- parseStmPart (var : ":=" : rest)
-      case rest' of
-        ";" : rest'' -> do
-          (parsedStms, remainingTokens) <- parseStm' rest'' (stm : stms)
-          Right (parsedStms, remainingTokens)
-        _ -> Left $ "parseStm': expected semicolon after assignment, got " ++ show rest'
-    _ -> Left $ "parseStm': unexpected tokens " ++ show tokens
+  (stm, remainingTokens) <- parseStmPart tokens
+  case remainingTokens of
+    ";" : rest -> parseStm' rest (stm : stms)
+    _ -> Left $ "parseStm': expected semicolon after assignment, got " ++ show remainingTokens
+
+-- SSeq should be a statement that represents a sequence of statements
 
 parseStmPart :: [String] -> Either String (Stm, [String])
 parseStmPart [] = Left "parseStmPart: unexpected end of input"
+parseStmPart ("if" : rest) = parseIf rest
 parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
-  case rest' of
-    ";" : rest'' -> Right (SAssign var expr, rest'')
-    _ -> Left $ "parseStmPart: expected semicolon after assignment, got " ++ show rest'
-parseStmPart tokens = Left $ "parseStmPart: unexpected tokens " ++ show tokens
+  Right (SAssign var expr, rest')
+-- ... other cases such as "while", "sequence of statements", etc.
+
 
 extractTokensWithParens :: [String] -> ([String], [String])
 extractTokensWithParens tokens = go [] tokens
@@ -241,13 +239,19 @@ extractTokensWithParens tokens = go [] tokens
     go acc (x:xs) = go (x : acc) xs
     go acc [] = (reverse acc, [])
 
-parseIf :: [String] -> Either String ([Stm], [String])
-parseIf ("if":rest) = do
-  (bexp, remainingTokens) <- parseBexpTokens rest
-  let conditionInstructions = compileBexp bexp
-  let (ifTokens, elseTokens) = extractTokensWithParens remainingTokens
-  trace ("Instructions for the condition: " ++ show conditionInstructions) $ Right ([], ifTokens)
-parseIf _ = Left "parseIf: 'if' keyword expected"
+-- Assuming parseStm returns a single Stm now
+parseIf :: [String] -> Either String (Stm, [String])
+parseIf ("if" : rest) = do
+  (condExp, restAfterCond) <- parseBexpTokens rest
+  -- Assuming there's a token that separates the condition from the 'then' keyword
+  (thenStm, restAfterThen) <- parseStm restAfterCond
+  case restAfterThen of
+    "else" : restAfterElse -> do
+      (elseStm, remainingTokens) <- parseStm restAfterElse
+      return (SIf condExp thenStm elseStm, remainingTokens)
+    _ -> Left "parseIf: 'else' keyword expected"
+parseIf tokens = Left $ "parseIf: unexpected tokens " ++ show tokens
+
 
 parseAexp :: [String] -> Either String (Aexp, [String])
 parseAexp tokens = parseAddSub tokens
@@ -286,15 +290,16 @@ parseMulDiv' (op : tokens) expr
 
 parseTerm :: [String] -> Either String (Aexp, [String])
 parseTerm [] = Left "parseTerm: unexpected end of input"
+parseTerm ("(":rest) = do
+  (exp, restTokens) <- parseAexp rest
+  case restTokens of
+    ")":moreTokens -> Right (exp, moreTokens)
+    _ -> Left "parseTerm: missing closing parenthesis"
 parseTerm (x:xs)
   | all isDigit x = Right (ALit (read x), xs)
   | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
-  | x == "(" = do
-    (expr, rest) <- parseAexp xs
-    case rest of
-      (")" : tokens) -> Right (expr, tokens)
-      _ -> Left "parseTerm: missing closing parenthesis"
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
+
 
 parseBexpTokens :: [String] -> Either String (Bexp, [String])
 parseBexpTokens ("true":rest) = Right (BLit True, rest)
@@ -322,18 +327,18 @@ parseBexpTokens (x:xs)
 parse :: String -> [Stm]
 parse str =
   let tokens = lexer str
-      debugTokens = trace ("Tokens in parse: " ++ show tokens) tokens
   in unsafePerformIO $ do
-       putStrLn $ "Tokens in parse: " ++ show tokens  -- Directly print tokens
-       let parseUntilEmpty [] parsed = return parsed
-           parseUntilEmpty remainingTokens parsed = do
-             case parseStm remainingTokens of
-               Left err -> error $ "Parsing error: " ++ err
-               Right (stms, newRemaining) -> do
-                 trace ("Parsed statements: " ++ show stms) (return ())
-                 trace ("Remaining tokens: " ++ show newRemaining) (return ())
-                 parseUntilEmpty newRemaining (parsed ++ stms)
+       putStrLn $ "Tokens in parse: " ++ show tokens
        parseUntilEmpty tokens []
+
+  where
+    parseUntilEmpty :: [String] -> [Stm] -> IO [Stm]
+    parseUntilEmpty [] parsed = return parsed
+    parseUntilEmpty remainingTokens parsed = do
+      case parseStm remainingTokens of
+        Left err -> error $ "Parsing error: " ++ err
+        Right (stm, newRemaining) -> parseUntilEmpty newRemaining (parsed ++ [stm])
+
 
 
 {- parse :: String -> [Stm]
