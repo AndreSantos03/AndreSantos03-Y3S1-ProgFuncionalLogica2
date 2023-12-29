@@ -132,12 +132,15 @@ testAssembler code = (stack2Str stack, state2Str state)
 sampleProgram :: String
 sampleProgram = "x:=5;y:=4;z:=x+y;"
 
+
 main :: IO ()
 main = do
-  let (instructions, finalState) = testParser sampleProgram
-  putStrLn $ "Instructions: " ++ instructions
-  putStrLn $ "Final State: " ++ finalState
-
+  let testBexp = parseBexpTokens ["(", "4", "+", "2", "<=", "x", "*", "y", ")"]
+  case testBexp of
+    Right (bexp, remainingTokens) ->
+      putStrLn $ "Parsed Boolean expression: " ++ show bexp ++ ", Remaining Tokens: " ++ show remainingTokens
+    Left err ->
+      putStrLn $ "Error: " ++ err
 
 data Aexp = ALit Integer
           | AVar String
@@ -208,10 +211,7 @@ parseStm' :: [String] -> [Stm] -> Either String ([Stm], [String])
 parseStm' [] stms = Right (reverse stms, [])
 parseStm' tokens stms = do
   case tokens of
-{-     ("if":rest) -> do
-
-    ("while":rest) -> do -}
-
+    -- ("if":rest) -> do
     (var : ":=" : rest) -> do
       (stm, rest') <- parseStmPart (var : ":=" : rest)
       case rest' of
@@ -230,6 +230,24 @@ parseStmPart (var : ":=" : rest) = do
     _ -> Left $ "parseStmPart: expected semicolon after assignment, got " ++ show rest'
 parseStmPart tokens = Left $ "parseStmPart: unexpected tokens " ++ show tokens
 
+extractTokensWithParens :: [String] -> ([String], [String])
+extractTokensWithParens tokens = go [] tokens
+  where
+    go acc ("(":xs) = go ("(":acc) xs
+    go acc (")":xs) =
+      if null acc then ([], xs)
+      else let (parenthesized, rest) = span (/= "(") acc
+           in go parenthesized xs
+    go acc (x:xs) = go (x : acc) xs
+    go acc [] = (reverse acc, [])
+
+parseIf :: [String] -> Either String ([Stm], [String])
+parseIf ("if":rest) = do
+  (bexp, remainingTokens) <- parseBexpTokens rest
+  let conditionInstructions = compileBexp bexp
+  let (ifTokens, elseTokens) = extractTokensWithParens remainingTokens
+  trace ("Instructions for the condition: " ++ show conditionInstructions) $ Right ([], ifTokens)
+parseIf _ = Left "parseIf: 'if' keyword expected"
 
 parseAexp :: [String] -> Either String (Aexp, [String])
 parseAexp tokens = parseAddSub tokens
@@ -277,6 +295,28 @@ parseTerm (x:xs)
       (")" : tokens) -> Right (expr, tokens)
       _ -> Left "parseTerm: missing closing parenthesis"
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
+
+parseBexpTokens :: [String] -> Either String (Bexp, [String])
+parseBexpTokens ("true":rest) = Right (BLit True, rest)
+parseBexpTokens ("false":rest) = Right (BLit False, rest)
+parseBexpTokens ("(":rest) = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (bexp, remaining)  -- Ignore the closing parenthesis
+parseBexpTokens (x:xs)
+  | all isDigit x = parseEquOrLeq xs (ALit (read x))
+  | otherwise = Left $ "parseBexpTokens: Unexpected token: " ++ x
+  where
+    parseEquOrLeq :: [String] -> Aexp -> Either String (Bexp, [String])
+    parseEquOrLeq xs@(op:xs') a1
+      | op `elem` ["==", "<="] = do
+        (a2, remaining) <- parseAexp xs'
+        case op of
+          "==" -> Right (BEq a1 a2, remaining)
+          "<=" -> Right (BLe a1 a2, remaining)
+          _    -> Left "parseEquOrLeq: Unexpected operator"
+      | otherwise = do
+        (a2, remaining) <- parseAexp xs
+        Right (BEq a1 a2, remaining)  -- Adjusted to return a Bexp (BEq)
 
 
 parse :: String -> [Stm]
