@@ -63,25 +63,25 @@ getConditionResult _ = error "Condition did not evaluate to a boolean value"
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
 run ((Push n):code, stack, state) =
-    trace ("Push " ++ show n) $
+    trace ("Push " ++ show n ++ "    Code: " ++ show code ++ "    Stack: " ++ stack2Str (IVal n : stack) ++ "    State: " ++ state2Str state) $
     run (code, IVal n : stack, state)
 run (Add:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Add") $
+    trace ("AddCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 + n2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, IVal (n1 + n2) : stack, state)
 run (Sub:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Sub") $
+    trace ("SubCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 - n2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, IVal (n1 - n2) : stack, state)
 run (Mult:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Mult") $
+    trace ("MultCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 * n2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, IVal (n1 * n2) : stack, state)
 run (Tru:code, stack, state) =
-    trace ("Tru") $
+    trace ("TruCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal True : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal True : stack, state)
 run (Fals:code, stack, state) =
-    trace ("Fals") $
+    trace ("FalsCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal False : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal False : stack, state)
 run ((Store var):code, val:stack, (s, store)) =
-    trace ("Store " ++ var ++ " " ++ showStackVal val ++ " Pre-store: " ++ state2Str (s, store)) $
+    trace ("Store " ++ var ++ " " ++ showStackVal val ++ "     Pre-store: " ++ state2Str (s, store) ++ "    Code: " ++ show code ++     "Stack: " ++ stack2Str stack) $
     let updatedStore = updateStore var val store
     in trace ("Post-store: " ++ state2Str (s, updatedStore)) $
        run (code, stack, (s, updatedStore))
@@ -92,18 +92,19 @@ run ((Store var):code, val:stack, (s, store)) =
       | otherwise = (v, sVal) : updateStore var val vs
 run ((Fetch varName):code, stack, state@(_, store)) =
     case lookup varName store of
-        Just val -> trace ("Fetch " ++ varName) $ run (code, val : stack, state)
+        Just val -> trace ("Fetch " ++ varName ++ "    Code: " ++ show code ++ "    Stack: " ++ stack2Str (val : stack) ++ "    State: " ++ state2Str state) $ 
+                    run (code, val : stack, state)
         Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
 run (Neg:code, BVal b : stack, state) =
-    trace ("Neg") $
+    trace ("NegCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal (not b) : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal (not b) : stack, state)
 run (Neg:code, stack, state) =
     error "Neg instruction expects a boolean value on top of the stack"
 run (Equ:code, v1 : v2 : stack, state) =
-    trace ("Equ") $
+    trace ("EquCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal (v1 == v2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal (v1 == v2) : stack, state)
 run (Le:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Le") $
+    trace ("LeCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal (n1 <= n2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal (n1 <= n2) : stack, state)  -- Ensure that n1 is the last pushed value
 run (Le:_, _, _) =
     error "Le instruction requires two integer values on top of the stack"
@@ -114,10 +115,10 @@ run (Loop condition body:restCode, stack, state) =
             in run (Loop condition body:restCode, bodyStack, bodyState)
        else run (restCode, stack, state)
 run (And:code, BVal b1 : BVal b2 : stack, state) =
-    trace ("And") $
+    trace ("AndCode: " ++ show code ++ "  Stack: " ++ stack2Str (BVal (b1 && b2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal (b1 && b2) : stack, state)
 run (And:_, _, _) =
-    error "Run-time error: 'And' operation requires two boolean values on top of the stack"
+    error "Runtime error: 'And' operation requires two boolean values on top of the stack"
 
 -- Implement other instructions as needed.
 
@@ -128,23 +129,15 @@ testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
 
+sampleProgram :: String
+sampleProgram = "x:=5;y:=4;z=x+y;"
+
 main :: IO ()
 main = do
-    let input1 = "x := 5; y := (3 + 2);"
-        input2 = "if (x == y) then (x := 1) else (x := 0);"
-        input3 = "while (x <= 10) do (x := (x + 1));"
-        
-    putStrLn "Testing lexer:"
-    putStrLn "----------------"
+  let (instructions, finalState) = testParser sampleProgram
+  putStrLn $ "Instructions: " ++ instructions
+  putStrLn $ "Final State: " ++ finalState
 
-    putStrLn "Input 1:"
-    print (lexer input1)
-
-    putStrLn "Input 2:"
-    print (lexer input2)
-
-    putStrLn "Input 3:"
-    print (lexer input3)
 
 data Aexp = ALit Integer
           | AVar String
@@ -196,13 +189,15 @@ compile statements = concatMap compileStm statements
 lexer :: String -> [String]
 lexer [] = []
 lexer (c:cs)
-  | c `elem` "(){}[];" = [c] : lexer cs
-  | isSpace c = lexer (dropWhile isSpace cs)
-  | c == ':' && not (null cs) && head cs == '=' =
-    [c, head cs] : lexer (drop 2 cs)
-  | otherwise = let (token, rest) = break (\x -> isSpace x || x `elem` "(){}[]:;") (c:cs)
+  | isSpace c = lexer cs
+  | isAlpha c = let (token, rest) = span isAlpha (c:cs)
                 in token : lexer rest
-
+  | isDigit c = let (token, rest) = span isDigit (c:cs)
+                in token : lexer rest
+  | c == '=' && not (null cs) && head cs == '=' = ["=="] ++ lexer (drop 1 cs)
+  | c == ':' && not (null cs) && head cs == '=' = [":="] ++ lexer (drop 1 cs)
+  | c `elem` "+-*/:=();" = [c] : lexer cs
+  | otherwise = lexer cs
 
 
 parseStms :: [String] -> Either String ([Stm], [String])
@@ -275,7 +270,6 @@ parseTerm (x:xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
 
 
-
 {- parse :: String -> [Stm]
 parse str =
   let tokens = lexer str
@@ -285,7 +279,6 @@ parse str =
        Left err -> error $ "Parsing error: " ++ err
        Right (stms, _) -> stms
  -}
-
 parse :: String -> [Stm]
 parse str =
   let tokens = lexer str
@@ -296,14 +289,18 @@ parse str =
          Left err -> error $ "Parsing error: " ++ err
          Right (stms, _) -> return stms
 
-testParser :: String -> (String, String)
+ 
+{- testParser :: String -> (String, String)
 testParser programCode = (stack2Str stack, state2Str state)
   where (_, stack, state) = run(compile (parse programCode), createEmptyStack, createEmptyState)
 
-testParseFunction :: String -> IO ()
-testParseFunction programCode = do
-  putStrLn "Testing parse function:"
-  let parsedStatements = parse programCode
-  putStrLn "Parsed statements:"
-  print parsedStatements
+ -}
 
+
+testParser :: String -> (String, String)
+testParser programCode = (instructionStr, finalStateStr)
+  where
+    instructions = parse programCode
+    instructionStr = trace ("Instructions generated from parsing: " ++ show instructions) ""
+    (_, _, finalState) = run (compile instructions, createEmptyStack, createEmptyState)
+    finalStateStr = state2Str finalState
