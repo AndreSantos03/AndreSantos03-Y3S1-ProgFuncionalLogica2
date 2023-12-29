@@ -161,6 +161,7 @@ data Bexp = BLit Bool
 data Stm = SAssign String Aexp
          | SSeq Stm Stm
          | SIf Bexp Stm Stm
+         | SIfElse Bexp Stm Stm
          | SWhile Bexp Stm
          | Noop
          deriving Show
@@ -239,19 +240,20 @@ extractTokensWithParens tokens = go [] tokens
     go acc (x:xs) = go (x : acc) xs
     go acc [] = (reverse acc, [])
 
--- Assuming parseStm returns a single Stm now
-parseIf :: [String] -> Either String (Stm, [String])
-parseIf ("if" : rest) = do
-  (condExp, restAfterCond) <- parseBexpTokens rest
-  -- Assuming there's a token that separates the condition from the 'then' keyword
-  (thenStm, restAfterThen) <- parseStm restAfterCond
-  case restAfterThen of
-    "else" : restAfterElse -> do
-      (elseStm, remainingTokens) <- parseStm restAfterElse
-      return (SIf condExp thenStm elseStm, remainingTokens)
-    _ -> Left "parseIf: 'else' keyword expected"
-parseIf tokens = Left $ "parseIf: unexpected tokens " ++ show tokens
 
+parseIf :: [String] -> Either String (Stm, [String])
+parseIf tokens = trace ("parseIf tokens: " ++ show tokens) $
+  do
+    (conditionExp, restAfterIf) <- parseBexpTokens tokens
+    case restAfterIf of
+        "then" : restAfterThen -> do
+            (thenStm, restAfterThenStm) <- parseStm restAfterThen
+            case restAfterThenStm of
+                "else" : restAfterElse -> do
+                    (elseStm, remainingTokens) <- parseStm restAfterElse
+                    return (SIf conditionExp thenStm elseStm, remainingTokens)
+                _ -> Left "parseIf: 'else' keyword expected after 'then' statement"
+        _ -> Left "parseIf: 'then' keyword expected after condition"
 
 parseAexp :: [String] -> Either String (Aexp, [String])
 parseAexp tokens = parseAddSub tokens
@@ -300,29 +302,82 @@ parseTerm (x:xs)
   | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
 
+-- Parses boolean expressions, starting from the lowest precedence (OR)
+parseBexp :: [String] -> Either String (Bexp, [String])
+parseBexp tokens = parseOrBexp tokens
+
+parseOrBexp :: [String] -> Either String (Bexp, [String])
+parseOrBexp tokens = do
+    (bexp1, rest) <- parseAndBexp tokens
+    case rest of
+        "or":rest' -> do
+            (bexp2, rest'') <- parseOrBexp rest'
+            return (BOr bexp1 bexp2, rest'')
+        _ -> return (bexp1, rest)
+
+parseAndBexp :: [String] -> Either String (Bexp, [String])
+parseAndBexp tokens = do
+    (bexp1, rest) <- parseEqualityBexp tokens
+    case rest of
+        "and":rest' -> do
+            (bexp2, rest'') <- parseAndBexp rest'
+            return (BAnd bexp1 bexp2, rest'')
+        _ -> return (bexp1, rest)
+
+-- Parses equality and less-than-or-equal expressions (==, <=)
+parseEqualityBexp :: [String] -> Either String (Bexp, [String])
+parseEqualityBexp tokens = do
+    (aexp1, rest) <- parseAexp tokens
+    case rest of
+        "==":rest' -> do
+            (aexp2, rest'') <- parseAexp rest'
+            return (BEq aexp1 aexp2, rest'')
+        _ -> return (BLit False, rest) -- If there's no equality operator, default to False or handle differently
+
+-- Parses relational expressions (<, <=, >, >=)
+parseRelationalBexp :: [String] -> Either String (Bexp, [String])
+parseRelationalBexp tokens = do
+    (aexp1, rest) <- parseAexp tokens
+    case rest of
+        "<=":rest' -> do
+            (aexp2, rest'') <- parseAexp rest'
+            return (BLe aexp1 aexp2, rest'')
+        -- Add other relational operators here
+        _ -> return (BLit False, rest) -- If there's no relational operator, default to False or handle differently
+
+
+parseNotBexp :: [String] -> Either String (Bexp, [String])
+parseNotBexp ("not":rest) = do
+    (bexp, rest') <- parseSimpleBexp rest
+    return (BNot bexp, rest')
+parseNotBexp tokens = parseSimpleBexp tokens
+
+-- Parses simple expressions (true, false, parentheses)
+parseSimpleBexp :: [String] -> Either String (Bexp, [String])
+parseSimpleBexp ("true":rest) = Right (BLit True, rest)
+parseSimpleBexp ("false":rest) = Right (BLit False, rest)
+parseSimpleBexp ("(":rest) = do
+    (bexp, moreTokens) <- parseBexp rest
+    case moreTokens of
+        ")":remaining -> Right (bexp, remaining)
+        _ -> Left "Missing closing parenthesis"
+parseSimpleBexp tokens = Left "Unexpected tokens in simple boolean expression"
+
 
 parseBexpTokens :: [String] -> Either String (Bexp, [String])
+parseBexpTokens ("not":rest) = do
+    (bexp, remaining) <- parseBexpTokens rest
+    return (BNot bexp, remaining)
 parseBexpTokens ("true":rest) = Right (BLit True, rest)
 parseBexpTokens ("false":rest) = Right (BLit False, rest)
 parseBexpTokens ("(":rest) = do
-  (bexp, remaining) <- parseBexpTokens rest
-  Right (bexp, remaining)  -- Ignore the closing parenthesis
-parseBexpTokens (x:xs)
-  | all isDigit x = parseEquOrLeq xs (ALit (read x))
-  | otherwise = Left $ "parseBexpTokens: Unexpected token: " ++ x
-  where
-    parseEquOrLeq :: [String] -> Aexp -> Either String (Bexp, [String])
-    parseEquOrLeq xs@(op:xs') a1
-      | op `elem` ["==", "<="] = do
-        (a2, remaining) <- parseAexp xs'
-        case op of
-          "==" -> Right (BEq a1 a2, remaining)
-          "<=" -> Right (BLe a1 a2, remaining)
-          _    -> Left "parseEquOrLeq: Unexpected operator"
-      | otherwise = do
-        (a2, remaining) <- parseAexp xs
-        Right (BEq a1 a2, remaining)  -- Adjusted to return a Bexp (BEq)
-
+    (bexp, remaining) <- parseBexp rest -- You need to implement parseBexp to handle the inner expressions
+    case remaining of
+        ")":moreTokens -> Right (bexp, moreTokens)
+-- Add cases for handling 'and', 'or', '==', '<=', etc.
+parseBexpTokens tokens = 
+  trace ("parseBexpTokens: " ++ show tokens) $
+  Left $ "Unexpected tokens in boolean expression: " ++ show tokens
 
 parse :: String -> [Stm]
 parse str =
@@ -366,3 +421,4 @@ testParser programCode = (instructionStr, finalStateStr)
     instructionStr = trace ("Instructions generated from parsing: " ++ show instructions) ""
     (_, _, finalState) = run (compile instructions, createEmptyStack, createEmptyState)
     finalStateStr = state2Str finalState
+
