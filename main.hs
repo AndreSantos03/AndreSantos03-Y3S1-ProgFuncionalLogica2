@@ -130,7 +130,7 @@ testAssembler code = (stack2Str stack, state2Str state)
 
 
 sampleProgram :: String
-sampleProgram = "x:=5;y:=4;z=x+y;"
+sampleProgram = "x:=5;y:=4;z:=x+y;"
 
 main :: IO ()
 main = do
@@ -200,26 +200,35 @@ lexer (c:cs)
   | otherwise = lexer cs
 
 
-parseStms :: [String] -> Either String ([Stm], [String])
-parseStms [] = Right ([], [])
-parseStms tokens = parseStms' tokens []
+parseStm :: [String] -> Either String ([Stm], [String])
+parseStm [] = Right ([], [])
+parseStm tokens = parseStm' tokens []
 
-parseStms' :: [String] -> [Stm] -> Either String ([Stm], [String])
-parseStms' [] stms = Right (reverse stms, [])
-parseStms' tokens stms = do
-  (stm, rest) <- parseStm tokens
-  case rest of
-    ";" : rest' -> parseStms' rest' (stm : stms)
-    _ -> Right (reverse (stm : stms), rest)
+parseStm' :: [String] -> [Stm] -> Either String ([Stm], [String])
+parseStm' [] stms = Right (reverse stms, [])
+parseStm' tokens stms = do
+  case tokens of
+{-     ("if":rest) -> do
 
-parseStm :: [String] -> Either String (Stm, [String])
-parseStm [] = Left "parseStm: unexpected end of input"
-parseStm (var : ":=" : rest) = do
+    ("while":rest) -> do -}
+
+    (var : ":=" : rest) -> do
+      (stm, rest') <- parseStmPart (var : ":=" : rest)
+      case rest' of
+        ";" : rest'' -> do
+          (parsedStms, remainingTokens) <- parseStm' rest'' (stm : stms)
+          Right (parsedStms, remainingTokens)
+        _ -> Left $ "parseStm': expected semicolon after assignment, got " ++ show rest'
+    _ -> Left $ "parseStm': unexpected tokens " ++ show tokens
+
+parseStmPart :: [String] -> Either String (Stm, [String])
+parseStmPart [] = Left "parseStmPart: unexpected end of input"
+parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
   case rest' of
     ";" : rest'' -> Right (SAssign var expr, rest'')
-    _ -> Left $ "parseStm: expected semicolon after assignment, got " ++ show rest'
-parseStm _ = Left "parseStm: unexpected tokens"
+    _ -> Left $ "parseStmPart: expected semicolon after assignment, got " ++ show rest'
+parseStmPart tokens = Left $ "parseStmPart: unexpected tokens " ++ show tokens
 
 
 parseAexp :: [String] -> Either String (Aexp, [String])
@@ -270,24 +279,32 @@ parseTerm (x:xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
 
 
-{- parse :: String -> [Stm]
-parse str =
-  let tokens = lexer str
-      tokensStr = trace ("Tokens in parse: " ++ show tokens) tokens
-
-  in case parseStms tokens of
-       Left err -> error $ "Parsing error: " ++ err
-       Right (stms, _) -> stms
- -}
 parse :: String -> [Stm]
 parse str =
   let tokens = lexer str
       debugTokens = trace ("Tokens in parse: " ++ show tokens) tokens
   in unsafePerformIO $ do
        putStrLn $ "Tokens in parse: " ++ show tokens  -- Directly print tokens
-       case parseStms tokens of
-         Left err -> error $ "Parsing error: " ++ err
-         Right (stms, _) -> return stms
+       let parseUntilEmpty [] parsed = return parsed
+           parseUntilEmpty remainingTokens parsed = do
+             case parseStm remainingTokens of
+               Left err -> error $ "Parsing error: " ++ err
+               Right (stms, newRemaining) -> do
+                 trace ("Parsed statements: " ++ show stms) (return ())
+                 trace ("Remaining tokens: " ++ show newRemaining) (return ())
+                 parseUntilEmpty newRemaining (parsed ++ stms)
+       parseUntilEmpty tokens []
+
+
+{- parse :: String -> [Stm]
+parse str =
+  let tokens = lexer str
+      tokensStr = trace ("Tokens in parse: " ++ show tokens) tokens
+
+  in case parseStm tokens of
+       Left err -> error $ "Parsing error: " ++ err
+       Right (stms, _) -> stms
+ -}
 
  
 {- testParser :: String -> (String, String)

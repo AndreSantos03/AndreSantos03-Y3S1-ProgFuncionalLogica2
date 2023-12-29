@@ -31,7 +31,7 @@ testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
 -- Examples:
--- c
+-- testAssembler [Push 10,Push 4,Push 3,Sub,Mult] == ("-10","")
 -- testAssembler [Fals,Push 3,Tru,Store "var",Store "a", Store "someVar"] == ("","a=3,someVar=False,var=True")
 -- testAssembler [Fals,Store "var",Fetch "var"] == ("False","var=False")
 -- testAssembler [Push (-20),Tru,Fals] == ("False,True,-20","")
@@ -81,6 +81,7 @@ testParser programCode = (stack2Str stack, state2Str state)
 -- testParser "if (1 == 0+1 = (2+1 == 4)) then x := 1; else x := 2;" == ("","x=2")
 -- testParser "x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);" == ("","x=2,y=-10,z=6")
 -- testParser "i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);" == ("","fact=3628800,i=1")
+
 
 {- Test compile
 main :: IO ()
