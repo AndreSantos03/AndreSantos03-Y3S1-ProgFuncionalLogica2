@@ -325,16 +325,25 @@ parseNegatedBexp rest = do
 
     
 parseBexpTokens :: [String] -> Either String (Bexp, [String])
-
 parseBexpTokens ("(":rest) = do
-  (bexp, remaining) <- parseBexpTokens rest
-  case remaining of
+  let updatedRest = if last rest == ")"
+                      then init rest
+                      else rest
+
+  case updatedRest of
     [] -> Left "parseBexpTokens: Missing closing parenthesis"
-    (")":xs) -> Right (bexp, xs)
-    _ -> Left "parseBexpTokens: Invalid expression or comparison"
+    _ -> do
+      (bexp, remaining) <- parseBexpTokens updatedRest
+      Right (bexp, remaining)
+
+
 parseBexpTokens ("not":rest) = do
   (bexp, remaining) <- parseBexpTokens rest
   Right (BNot bexp, remaining)
+parseBexpTokens (x:"and":xs) = do
+  (b1, remaining1) <- parseBexpTokens [x]
+  (b2, remaining2) <- parseBexpTokens xs
+  Right (BAnd b1 b2, remaining2)
 parseBexpTokens (x:"==":xs) = do
   (a1, remaining1) <- parseAexp [x]
   (a2, remaining2) <- parseAexp xs
@@ -343,7 +352,14 @@ parseBexpTokens (x:"<=":xs) = do
   (a1, remaining1) <- parseAexp [x]
   (a2, remaining2) <- parseAexp xs
   Right (BLe a1 a2, remaining2)
-parseBexpTokens _ = Left "parseBexpTokens: Invalid expression or comparison"
+parseBexpTokens [x] = do
+  (aexp, remaining) <- parseTerm [x]
+  case aexp of
+    ALit n -> Right (BLit (n /= 0), remaining)  -- Assuming 0 is considered False, and non-zero as True
+    ATrue -> Right (BLit True, remaining)
+    AFalse -> Right (BLit False, remaining)
+
+parseBexpTokens tokens = Left $ "parseBexpTokens: Invalid expression or comparison at token: " ++ unwords tokens
 
 
 
