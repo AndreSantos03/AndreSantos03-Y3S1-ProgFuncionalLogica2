@@ -163,7 +163,6 @@ data Bexp = BLit Bool
 data Stm = SAssign String Aexp
          | SSeq Stm Stm
          | SIf Bexp Stm Stm
-         | SIfElse Bexp Stm Stm
          | SWhile Bexp Stm
          | Noop
          deriving Show
@@ -338,79 +337,9 @@ parseNegatedBexp rest = do
   Right (BNot bexp, remaining)
 
 
-
-
-takeUntilIncluding :: String -> [String] -> ([String], [String])
-takeUntilIncluding delim tokens =
-  let (beforeDelim, afterDelim) = span (/= delim) tokens
-      includingDelim = takeWhile (== delim) afterDelim
-  in (filter (not . null) beforeDelim, includingDelim ++ drop (length includingDelim) afterDelim)
-
-takeUntilExcluding :: String -> [String] -> ([String], [String])
-takeUntilExcluding delim tokens =
-  let (beforeDelim, afterDelim) = span (/= delim) tokens
-  in (filter (not . null) beforeDelim, afterDelim)
-
--- This function is served to pick the code inside the conditionals and the then and else statements
-extractInsideCode :: [String] -> ([String], [String])
-extractInsideCode tokens = go [] tokens
-  where
-    go acc ("if":xs) =  takeUntilExcluding "then" xs
-    go acc ("then":xs) = takeUntilExcluding "else" xs
-    go acc ("else":xs) 
-      -- | head xs == "(" = takeUntilIncluding ")" xs
-      | head xs == "(" = let (insideElse, rest) = takeUntilIncluding ")" xs
-                          in (tail insideElse, rest)
-      | otherwise = takeUntilIncluding ";" xs
-    go acc ("(":xs) = go ("(":acc) xs
-    go acc (")":xs) =
-      if null acc then ([], xs)
-      else let (parenthesized, rest) = span (/= "(") acc
-           in go parenthesized xs
-    go acc (x:xs) = go (x : acc) xs
-    go acc [] = (reverse acc, [])
-  
---Must pass to it with the token starting with if
-parseIf :: [String] -> Either String (Stm, [String])
-parseIf tokens = do
-    let (conditionTokens, rest1) = extractInsideCode tokens
-    trace ("Conditional tokens: " ++ show conditionTokens) $ return ()
-    (condition, rest2) <- parseBexpTokens conditionTokens
-    let (thenTokens, rest3) = extractInsideCode rest1
-    trace ("Then tokens: " ++ show thenTokens) $ return ()
-    (thenStatement, rest4) <- parseStm thenTokens
-    let (elseTokens, rest5) = extractInsideCode rest3
-    trace ("Else tokens: " ++ show elseTokens) $ return ()
-    (elseStatement, rest6) <- parseStm elseTokens
-    Right (SIf condition thenStatement elseStatement, rest5)
-
-parseNegatedBexp :: [String] -> Either String (Bexp, [String])
-parseNegatedBexp ("(":rest) = do
-  (bexp, remaining) <- parseBexpTokens rest
-  Right (BNot bexp, remaining)
-parseNegatedBexp rest = do
-  (bexp, remaining) <- parseBexpTokens rest
-  Right (BNot bexp, remaining)
-
-
-
+    
 parseBexpTokens :: [String] -> Either String (Bexp, [String])
 parseBexpTokens ("(":rest) = do
-  let updatedRest = if last rest == ")"
-                      then init rest
-                      else rest
-
-  case updatedRest of
-    [] -> Left "parseBexpTokens: Missing closing parenthesis"
-    _ -> do
-      (bexp, remaining) <- parseBexpTokens updatedRest
-      Right (bexp, remaining)
-
-
-parseBexpTokens ("not":rest) = do
-  (bexp, remaining) <- parseBexpTokens rest
-  Right (BNot bexp, remaining)
-parseBexpTokens (x:"and":xs) = do
   let updatedRest = if last rest == ")"
                       then init rest
                       else rest
@@ -491,4 +420,3 @@ testParser programCode = (instructionStr, finalStateStr)
     instructionStr = trace ("Instructions generated from parsing: " ++ show instructions) ""
     (_, _, finalState) = run (compile instructions, createEmptyStack, createEmptyState)
     finalStateStr = state2Str finalState
-
