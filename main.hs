@@ -344,6 +344,9 @@ parseBexpTokens (x:"and":xs) = do
   (b1, remaining1) <- parseBexpTokens [x]
   (b2, remaining2) <- parseBexpTokens xs
   Right (BAnd b1 b2, remaining2)
+
+  
+  Right (BAnd b1 b2, remaining2)
 parseBexpTokens (x:"==":xs) = do
   (a1, remaining1) <- parseAexp [x]
   (a2, remaining2) <- parseAexp xs
@@ -352,12 +355,10 @@ parseBexpTokens (x:"<=":xs) = do
   (a1, remaining1) <- parseAexp [x]
   (a2, remaining2) <- parseAexp xs
   Right (BLe a1 a2, remaining2)
-parseBexpTokens [x] = do
-  (aexp, remaining) <- parseTerm [x]
-  case aexp of
-    ALit n -> Right (BLit (n /= 0), remaining)  -- Assuming 0 is considered False, and non-zero as True
-    ATrue -> Right (BLit True, remaining)
-    AFalse -> Right (BLit False, remaining)
+parseBexpTokens ("true":xs) = Right (BLit True, xs)
+parseBexpTokens ("false":xs) = Right (BLit False, xs)
+
+
 
 parseBexpTokens tokens = Left $ "parseBexpTokens: Invalid expression or comparison at token: " ++ unwords tokens
 
