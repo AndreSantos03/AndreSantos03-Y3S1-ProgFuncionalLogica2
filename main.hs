@@ -227,36 +227,6 @@ parseStmPart (var : ":=" : rest) = do
   Right (SAssign var expr, rest')
 -- ... other cases such as "while", "sequence of statements", etc.
 
--- This function is served to pick the code inside the conditionals and the then and else statements
---removes parentheses 
-extractInsideCode :: [String] -> ([String], [String])
-extractInsideCode tokens = go [] tokens
-  where
-    go acc ("(":xs) = go ("(":acc) xs
-    go acc (")":xs) =
-      if null acc then ([], xs)
-      else let (parenthesized, rest) = span (/= "(") acc
-           in go parenthesized xs
-    go acc ("then":xs) = (reverse acc, "then":xs)
-    go acc ("else":xs) = (reverse acc, "else":xs)
-    go acc (";":xs) = (reverse acc, ";":xs)
-    go acc (x:xs) = go (x : acc) xs
-    go acc [] = (reverse acc, [])
-
-
--- Assuming parseStm returns a single Stm now
-parseIf :: [String] -> Either String (Stm, [String])
-parseIf ("if" : rest) = do
-  (condExp, restAfterCond) <- parseBexpTokens rest
-  -- Assuming there's a token that separates the condition from the 'then' keyword
-  (thenStm, restAfterThen) <- parseStm restAfterCond
-  case restAfterThen of
-    "else" : restAfterElse -> do
-      (elseStm, remainingTokens) <- parseStm restAfterElse
-      return (SIf condExp thenStm elseStm, remainingTokens)
-    _ -> Left "parseIf: 'else' keyword expected"
-parseIf tokens = Left $ "parseIf: unexpected tokens " ++ show tokens
-
 
 parseAexp :: [String] -> Either String (Aexp, [String])
 parseAexp tokens = parseAddSub tokens
@@ -305,6 +275,39 @@ parseTerm (x:xs)
   | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
 
+-- This function is served to pick the code inside the conditionals and the then and else statements
+extractInsideCode :: [String] -> ([String], [String])
+extractInsideCode tokens = go [] tokens
+  where
+    go acc ("if":xs) = takeUntil "then" xs
+    go acc ("then":xs) = takeUntil "else" xs
+    go acc ("else":xs) = (xs,[])
+    go acc ("(":xs) = go ("(":acc) xs
+    go acc (")":xs) =
+      if null acc then ([], xs)
+      else let (parenthesized, rest) = span (/= "(") acc
+           in go parenthesized xs
+    go acc (x:xs) = go (x : acc) xs
+    go acc [] = (reverse acc, [])
+    
+    takeUntil :: String -> [String] -> ([String], [String])
+    takeUntil delim tokens =
+      let (beforeDelim, afterDelim) = break (== delim) tokens
+      in (filter (not . null) beforeDelim, afterDelim)
+
+      
+parseIf :: [String] -> Either String (Stm, [String])
+parseIf tokens = do
+    let (conditionTokens, rest1) = extractInsideCode tokens
+    trace ("Conditional tokens: " ++ show conditionTokens) $ return ()
+    (condition, rest2) <- parseBexpTokens conditionTokens
+    let (thenTokens, rest3) = extractInsideCode rest1
+    trace ("Then tokens: " ++ show thenTokens) $ return ()
+    (thenStatement, rest4) <- parseStm thenTokens
+    let (elseTokens, rest5) = extractInsideCode rest3
+    trace ("Else tokens: " ++ show elseTokens) $ return ()
+    (elseStatement, rest6) <- parseStm elseTokens
+    Right (SIf condition thenStatement elseStatement, rest5)
 
 parseNegatedBexp :: [String] -> Either String (Bexp, [String])
 parseNegatedBexp ("(":rest) = do
