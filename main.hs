@@ -129,18 +129,18 @@ testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
 
-sampleProgram :: String
-sampleProgram = "x:=5;y:=4;z:=x+y;"
+
 
 
 main :: IO ()
 main = do
-  let testBexp = parseBexpTokens ["(", "4", "+", "2", "<=", "x", "*", "y", ")"]
-  case testBexp of
-    Right (bexp, remainingTokens) ->
-      putStrLn $ "Parsed Boolean expression: " ++ show bexp ++ ", Remaining Tokens: " ++ show remainingTokens
-    Left err ->
-      putStrLn $ "Error: " ++ err
+  let example1 = ["this", ";", "is", ";", "a", ";", "test", ";", "end"]
+  let example2 = ["a", "b", "c", ";", ";", ";", "d", "e", "f"]
+
+  let result1 = takeUntilIncluding ";" example1
+  putStrLn "Result 1:"
+  print result1
+  -- Expected output for example1: (["this"], [";", "is", ";", "a", ";", "test", ";", "end"])
 
 data Aexp = ALit Integer
           | AVar String
@@ -148,6 +148,8 @@ data Aexp = ALit Integer
           | ASub Aexp Aexp
           | AMul Aexp Aexp
           | ADiv Aexp Aexp
+          | ATrue
+          | AFalse
           deriving Show
 
 data Bexp = BLit Bool
@@ -172,6 +174,8 @@ compileAexp (AVar x) = [Fetch x]
 compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
 compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
 compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
+compileAexp (ATrue) = [Tru]
+compileAexp (AFalse) = [Fals]
 
 compileBexp :: Bexp -> Code
 compileBexp (BLit b) = [if b then Tru else Fals]
@@ -201,6 +205,7 @@ lexer (c:cs)
                 in token : lexer rest
   | c == '=' && not (null cs) && head cs == '=' = ["=="] ++ lexer (drop 1 cs)
   | c == ':' && not (null cs) && head cs == '=' = [":="] ++ lexer (drop 1 cs)
+  | c == '<' && not (null cs) && head cs == '=' = ["<="] ++ lexer (drop 1 cs)
   | c `elem` "+-*/:=();" = [c] : lexer cs
   | otherwise = lexer cs
 
@@ -222,38 +227,12 @@ parseStm' tokens stms = do
 
 parseStmPart :: [String] -> Either String (Stm, [String])
 parseStmPart [] = Left "parseStmPart: unexpected end of input"
-parseStmPart ("if" : rest) = parseIf rest
+parseStmPart ("if" : rest) = parseIf ("if" : rest)
 parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
   Right (SAssign var expr, rest')
 -- ... other cases such as "while", "sequence of statements", etc.
 
-
-extractTokensWithParens :: [String] -> ([String], [String])
-extractTokensWithParens tokens = go [] tokens
-  where
-    go acc ("(":xs) = go ("(":acc) xs
-    go acc (")":xs) =
-      if null acc then ([], xs)
-      else let (parenthesized, rest) = span (/= "(") acc
-           in go parenthesized xs
-    go acc (x:xs) = go (x : acc) xs
-    go acc [] = (reverse acc, [])
-
-
-parseIf :: [String] -> Either String (Stm, [String])
-parseIf tokens = trace ("parseIf tokens: " ++ show tokens) $
-  do
-    (conditionExp, restAfterIf) <- parseBexpTokens tokens
-    case restAfterIf of
-        "then" : restAfterThen -> do
-            (thenStm, restAfterThenStm) <- parseStm restAfterThen
-            case restAfterThenStm of
-                "else" : restAfterElse -> do
-                    (elseStm, remainingTokens) <- parseStm restAfterElse
-                    return (SIf conditionExp thenStm elseStm, remainingTokens)
-                _ -> Left "parseIf: 'else' keyword expected after 'then' statement"
-        _ -> Left "parseIf: 'then' keyword expected after condition"
 
 parseAexp :: [String] -> Either String (Aexp, [String])
 parseAexp tokens = parseAddSub tokens
@@ -297,87 +276,178 @@ parseTerm ("(":rest) = do
   case restTokens of
     ")":moreTokens -> Right (exp, moreTokens)
     _ -> Left "parseTerm: missing closing parenthesis"
+parseTerm ("true":xs) = Right (ATrue, xs)
+parseTerm ("false":xs) = Right (AFalse, xs)
 parseTerm (x:xs)
   | all isDigit x = Right (ALit (read x), xs)
   | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
 
--- Parses boolean expressions, starting from the lowest precedence (OR)
-parseBexp :: [String] -> Either String (Bexp, [String])
-parseBexp tokens = parseOrBexp tokens
-
-parseOrBexp :: [String] -> Either String (Bexp, [String])
-parseOrBexp tokens = do
-    (bexp1, rest) <- parseAndBexp tokens
-    case rest of
-        "or":rest' -> do
-            (bexp2, rest'') <- parseOrBexp rest'
-            return (BOr bexp1 bexp2, rest'')
-        _ -> return (bexp1, rest)
-
-parseAndBexp :: [String] -> Either String (Bexp, [String])
-parseAndBexp tokens = do
-    (bexp1, rest) <- parseEqualityBexp tokens
-    case rest of
-        "and":rest' -> do
-            (bexp2, rest'') <- parseAndBexp rest'
-            return (BAnd bexp1 bexp2, rest'')
-        _ -> return (bexp1, rest)
-
--- Parses equality and less-than-or-equal expressions (==, <=)
-parseEqualityBexp :: [String] -> Either String (Bexp, [String])
-parseEqualityBexp tokens = do
-    (aexp1, rest) <- parseAexp tokens
-    case rest of
-        "==":rest' -> do
-            (aexp2, rest'') <- parseAexp rest'
-            return (BEq aexp1 aexp2, rest'')
-        _ -> return (BLit False, rest) -- If there's no equality operator, default to False or handle differently
-
--- Parses relational expressions (<, <=, >, >=)
-parseRelationalBexp :: [String] -> Either String (Bexp, [String])
-parseRelationalBexp tokens = do
-    (aexp1, rest) <- parseAexp tokens
-    case rest of
-        "<=":rest' -> do
-            (aexp2, rest'') <- parseAexp rest'
-            return (BLe aexp1 aexp2, rest'')
-        -- Add other relational operators here
-        _ -> return (BLit False, rest) -- If there's no relational operator, default to False or handle differently
 
 
-parseNotBexp :: [String] -> Either String (Bexp, [String])
-parseNotBexp ("not":rest) = do
-    (bexp, rest') <- parseSimpleBexp rest
-    return (BNot bexp, rest')
-parseNotBexp tokens = parseSimpleBexp tokens
+takeUntilIncluding :: String -> [String] -> ([String], [String])
+takeUntilIncluding delim tokens =
+  let (beforeDelim, afterDelim) = span (/= delim) tokens
+      includingDelim = takeWhile (== delim) afterDelim
+  in (filter (not . null) beforeDelim, includingDelim ++ drop (length includingDelim) afterDelim)
 
--- Parses simple expressions (true, false, parentheses)
-parseSimpleBexp :: [String] -> Either String (Bexp, [String])
-parseSimpleBexp ("true":rest) = Right (BLit True, rest)
-parseSimpleBexp ("false":rest) = Right (BLit False, rest)
-parseSimpleBexp ("(":rest) = do
-    (bexp, moreTokens) <- parseBexp rest
-    case moreTokens of
-        ")":remaining -> Right (bexp, remaining)
-        _ -> Left "Missing closing parenthesis"
-parseSimpleBexp tokens = Left "Unexpected tokens in simple boolean expression"
+takeUntilExcluding :: String -> [String] -> ([String], [String])
+takeUntilExcluding delim tokens =
+  let (beforeDelim, afterDelim) = span (/= delim) tokens
+  in (filter (not . null) beforeDelim, afterDelim)
+
+-- This function is served to pick the code inside the conditionals and the then and else statements
+extractInsideCode :: [String] -> ([String], [String])
+extractInsideCode tokens = go [] tokens
+  where
+    go acc ("if":xs) =  takeUntilExcluding "then" xs
+    go acc ("then":xs) = takeUntilExcluding "else" xs
+    go acc ("else":xs) 
+      -- | head xs == "(" = takeUntilIncluding ")" xs
+      | head xs == "(" = let (insideElse, rest) = takeUntilIncluding ")" xs
+                          in (tail insideElse, rest)
+      | otherwise = takeUntilIncluding ";" xs
+    go acc ("(":xs) = go ("(":acc) xs
+    go acc (")":xs) =
+      if null acc then ([], xs)
+      else let (parenthesized, rest) = span (/= "(") acc
+           in go parenthesized xs
+    go acc (x:xs) = go (x : acc) xs
+    go acc [] = (reverse acc, [])
+  
+--Must pass to it with the token starting with if
+parseIf :: [String] -> Either String (Stm, [String])
+parseIf tokens = do
+    let (conditionTokens, rest1) = extractInsideCode tokens
+    trace ("Conditional tokens: " ++ show conditionTokens) $ return ()
+    (condition, rest2) <- parseBexpTokens conditionTokens
+    let (thenTokens, rest3) = extractInsideCode rest1
+    trace ("Then tokens: " ++ show thenTokens) $ return ()
+    (thenStatement, rest4) <- parseStm thenTokens
+    let (elseTokens, rest5) = extractInsideCode rest3
+    trace ("Else tokens: " ++ show elseTokens) $ return ()
+    (elseStatement, rest6) <- parseStm elseTokens
+    Right (SIf condition thenStatement elseStatement, rest5)
+
+parseNegatedBexp :: [String] -> Either String (Bexp, [String])
+parseNegatedBexp ("(":rest) = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+parseNegatedBexp rest = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+
+
+
+
+takeUntilIncluding :: String -> [String] -> ([String], [String])
+takeUntilIncluding delim tokens =
+  let (beforeDelim, afterDelim) = span (/= delim) tokens
+      includingDelim = takeWhile (== delim) afterDelim
+  in (filter (not . null) beforeDelim, includingDelim ++ drop (length includingDelim) afterDelim)
+
+takeUntilExcluding :: String -> [String] -> ([String], [String])
+takeUntilExcluding delim tokens =
+  let (beforeDelim, afterDelim) = span (/= delim) tokens
+  in (filter (not . null) beforeDelim, afterDelim)
+
+-- This function is served to pick the code inside the conditionals and the then and else statements
+extractInsideCode :: [String] -> ([String], [String])
+extractInsideCode tokens = go [] tokens
+  where
+    go acc ("if":xs) =  takeUntilExcluding "then" xs
+    go acc ("then":xs) = takeUntilExcluding "else" xs
+    go acc ("else":xs) 
+      -- | head xs == "(" = takeUntilIncluding ")" xs
+      | head xs == "(" = let (insideElse, rest) = takeUntilIncluding ")" xs
+                          in (tail insideElse, rest)
+      | otherwise = takeUntilIncluding ";" xs
+    go acc ("(":xs) = go ("(":acc) xs
+    go acc (")":xs) =
+      if null acc then ([], xs)
+      else let (parenthesized, rest) = span (/= "(") acc
+           in go parenthesized xs
+    go acc (x:xs) = go (x : acc) xs
+    go acc [] = (reverse acc, [])
+  
+--Must pass to it with the token starting with if
+parseIf :: [String] -> Either String (Stm, [String])
+parseIf tokens = do
+    let (conditionTokens, rest1) = extractInsideCode tokens
+    trace ("Conditional tokens: " ++ show conditionTokens) $ return ()
+    (condition, rest2) <- parseBexpTokens conditionTokens
+    let (thenTokens, rest3) = extractInsideCode rest1
+    trace ("Then tokens: " ++ show thenTokens) $ return ()
+    (thenStatement, rest4) <- parseStm thenTokens
+    let (elseTokens, rest5) = extractInsideCode rest3
+    trace ("Else tokens: " ++ show elseTokens) $ return ()
+    (elseStatement, rest6) <- parseStm elseTokens
+    Right (SIf condition thenStatement elseStatement, rest5)
+
+parseNegatedBexp :: [String] -> Either String (Bexp, [String])
+parseNegatedBexp ("(":rest) = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+parseNegatedBexp rest = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+
 
 
 parseBexpTokens :: [String] -> Either String (Bexp, [String])
-parseBexpTokens ("not":rest) = do
-    (bexp, remaining) <- parseBexpTokens rest
-    return (BNot bexp, remaining)
-parseBexpTokens ("true":rest) = Right (BLit True, rest)
-parseBexpTokens ("false":rest) = Right (BLit False, rest)
 parseBexpTokens ("(":rest) = do
-    (bexp, remaining) <- parseBexp rest -- You need to implement parseBexp to handle the inner expressions
-    case remaining of
-        ")":moreTokens -> Right (bexp, moreTokens)
--- Add cases for handling 'and', 'or', '==', '<=', etc.
-parseBexpTokens tokens = 
-  trace ("parseBexpTokens: " ++ show tokens) $
-  Left $ "Unexpected tokens in boolean expression: " ++ show tokens
+  let updatedRest = if last rest == ")"
+                      then init rest
+                      else rest
+
+  case updatedRest of
+    [] -> Left "parseBexpTokens: Missing closing parenthesis"
+    _ -> do
+      (bexp, remaining) <- parseBexpTokens updatedRest
+      Right (bexp, remaining)
+
+
+parseBexpTokens ("not":rest) = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+parseBexpTokens (x:"and":xs) = do
+  let updatedRest = if last rest == ")"
+                      then init rest
+                      else rest
+
+  case updatedRest of
+    [] -> Left "parseBexpTokens: Missing closing parenthesis"
+    _ -> do
+      (bexp, remaining) <- parseBexpTokens updatedRest
+      Right (bexp, remaining)
+
+
+parseBexpTokens ("not":rest) = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+parseBexpTokens (x:"and":xs) = do
+  (b1, remaining1) <- parseBexpTokens [x]
+  (b2, remaining2) <- parseBexpTokens xs
+  Right (BAnd b1 b2, remaining2)
+
+  
+  Right (BAnd b1 b2, remaining2)
+parseBexpTokens (x:"==":xs) = do
+  (a1, remaining1) <- parseAexp [x]
+  (a2, remaining2) <- parseAexp xs
+  Right (BEq a1 a2, remaining2)
+parseBexpTokens (x:"<=":xs) = do
+  (a1, remaining1) <- parseAexp [x]
+  (a2, remaining2) <- parseAexp xs
+  Right (BLe a1 a2, remaining2)
+parseBexpTokens ("true":xs) = Right (BLit True, xs)
+parseBexpTokens ("false":xs) = Right (BLit False, xs)
+
+
+
+parseBexpTokens tokens = Left $ "parseBexpTokens: Invalid expression or comparison at token: " ++ unwords tokens
+
+
 
 parse :: String -> [Stm]
 parse str =
