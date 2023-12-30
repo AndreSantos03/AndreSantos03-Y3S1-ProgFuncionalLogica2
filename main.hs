@@ -227,17 +227,22 @@ parseStmPart (var : ":=" : rest) = do
   Right (SAssign var expr, rest')
 -- ... other cases such as "while", "sequence of statements", etc.
 
-
-extractTokensWithParens :: [String] -> ([String], [String])
-extractTokensWithParens tokens = go [] tokens
+-- This function is served to pick the code inside the conditionals and the then and else statements
+--removes parentheses 
+extractInsideCode :: [String] -> ([String], [String])
+extractInsideCode tokens = go [] tokens
   where
     go acc ("(":xs) = go ("(":acc) xs
     go acc (")":xs) =
       if null acc then ([], xs)
       else let (parenthesized, rest) = span (/= "(") acc
            in go parenthesized xs
+    go acc ("then":xs) = (reverse acc, "then":xs)
+    go acc ("else":xs) = (reverse acc, "else":xs)
+    go acc (";":xs) = (reverse acc, ";":xs)
     go acc (x:xs) = go (x : acc) xs
     go acc [] = (reverse acc, [])
+
 
 -- Assuming parseStm returns a single Stm now
 parseIf :: [String] -> Either String (Stm, [String])
