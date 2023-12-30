@@ -134,12 +134,13 @@ testAssembler code = (stack2Str stack, state2Str state)
 
 main :: IO ()
 main = do
-  let testBexp = parseBexpTokens ["(", "4", "+", "2", "<=", "x", "*", "y", ")"]
-  case testBexp of
-    Right (bexp, remainingTokens) ->
-      putStrLn $ "Parsed Boolean expression: " ++ show bexp ++ ", Remaining Tokens: " ++ show remainingTokens
-    Left err ->
-      putStrLn $ "Error: " ++ err
+  let example1 = ["this", ";", "is", ";", "a", ";", "test", ";", "end"]
+  let example2 = ["a", "b", "c", ";", ";", ";", "d", "e", "f"]
+
+  let result1 = takeUntilIncluding ";" example1
+  putStrLn "Result 1:"
+  print result1
+  -- Expected output for example1: (["this"], [";", "is", ";", "a", ";", "test", ";", "end"])
 
 data Aexp = ALit Integer
           | AVar String
@@ -203,6 +204,7 @@ lexer (c:cs)
                 in token : lexer rest
   | c == '=' && not (null cs) && head cs == '=' = ["=="] ++ lexer (drop 1 cs)
   | c == ':' && not (null cs) && head cs == '=' = [":="] ++ lexer (drop 1 cs)
+  | c == '<' && not (null cs) && head cs == '=' = ["<="] ++ lexer (drop 1 cs)
   | c `elem` "+-*/:=();" = [c] : lexer cs
   | otherwise = lexer cs
 
@@ -280,13 +282,30 @@ parseTerm (x:xs)
   | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
 
+
+
+takeUntilIncluding :: String -> [String] -> ([String], [String])
+takeUntilIncluding delim tokens =
+  let (beforeDelim, afterDelim) = span (/= delim) tokens
+      includingDelim = takeWhile (== delim) afterDelim
+  in (filter (not . null) beforeDelim, includingDelim ++ drop (length includingDelim) afterDelim)
+
+takeUntilExcluding :: String -> [String] -> ([String], [String])
+takeUntilExcluding delim tokens =
+  let (beforeDelim, afterDelim) = span (/= delim) tokens
+  in (filter (not . null) beforeDelim, afterDelim)
+
 -- This function is served to pick the code inside the conditionals and the then and else statements
 extractInsideCode :: [String] -> ([String], [String])
 extractInsideCode tokens = go [] tokens
   where
-    go acc ("if":xs) = takeUntil "then" xs
-    go acc ("then":xs) = takeUntil "else" xs
-    go acc ("else":xs) = (xs,[])
+    go acc ("if":xs) =  takeUntilExcluding "then" xs
+    go acc ("then":xs) = takeUntilExcluding "else" xs
+    go acc ("else":xs) 
+      -- | head xs == "(" = takeUntilIncluding ")" xs
+      | head xs == "(" = let (insideElse, rest) = takeUntilIncluding ")" xs
+                          in (tail insideElse, rest)
+      | otherwise = takeUntilIncluding ";" xs
     go acc ("(":xs) = go ("(":acc) xs
     go acc (")":xs) =
       if null acc then ([], xs)
@@ -294,12 +313,7 @@ extractInsideCode tokens = go [] tokens
            in go parenthesized xs
     go acc (x:xs) = go (x : acc) xs
     go acc [] = (reverse acc, [])
-    
-    takeUntil :: String -> [String] -> ([String], [String])
-    takeUntil delim tokens =
-      let (beforeDelim, afterDelim) = break (== delim) tokens
-      in (filter (not . null) beforeDelim, afterDelim)
-
+  
 --Must pass to it with the token starting with if
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf tokens = do
