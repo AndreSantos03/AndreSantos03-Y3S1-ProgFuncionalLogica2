@@ -306,27 +306,37 @@ parseTerm (x:xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
 
 
+parseNegatedBexp :: [String] -> Either String (Bexp, [String])
+parseNegatedBexp ("(":rest) = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+parseNegatedBexp rest = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+
+
+    
 parseBexpTokens :: [String] -> Either String (Bexp, [String])
 parseBexpTokens ("true":rest) = Right (BLit True, rest)
 parseBexpTokens ("false":rest) = Right (BLit False, rest)
 parseBexpTokens ("(":rest) = do
   (bexp, remaining) <- parseBexpTokens rest
-  Right (bexp, remaining)  -- Ignore the closing parenthesis
-parseBexpTokens (x:xs)
-  | all isDigit x = parseEquOrLeq xs (ALit (read x))
-  | otherwise = Left $ "parseBexpTokens: Unexpected token: " ++ x
-  where
-    parseEquOrLeq :: [String] -> Aexp -> Either String (Bexp, [String])
-    parseEquOrLeq xs@(op:xs') a1
-      | op `elem` ["==", "<="] = do
-        (a2, remaining) <- parseAexp xs'
-        case op of
-          "==" -> Right (BEq a1 a2, remaining)
-          "<=" -> Right (BLe a1 a2, remaining)
-          _    -> Left "parseEquOrLeq: Unexpected operator"
-      | otherwise = do
-        (a2, remaining) <- parseAexp xs
-        Right (BEq a1 a2, remaining)  -- Adjusted to return a Bexp (BEq)
+  case remaining of
+    (")":xs) -> Right (bexp, xs)
+    _ -> Left "parseBexpTokens: Missing closing parenthesis"
+parseBexpTokens ("not":rest) = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+parseBexpTokens (x:"==":xs) = do
+  (a1, remaining1) <- parseAexp [x]
+  (a2, remaining2) <- parseAexp xs
+  Right (BEq a1 a2, remaining2)
+parseBexpTokens (x:"<=":xs) = do
+  (a1, remaining1) <- parseAexp [x]
+  (a2, remaining2) <- parseAexp xs
+  Right (BLe a1 a2, remaining2)
+parseBexpTokens _ = Left "parseBexpTokens: Invalid expression or comparison"
+
 
 
 parse :: String -> [Stm]
