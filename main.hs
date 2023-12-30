@@ -129,8 +129,7 @@ testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
 
-sampleProgram :: String
-sampleProgram = "x:=5;y:=4;z:=x+y;"
+
 
 
 main :: IO ()
@@ -148,6 +147,8 @@ data Aexp = ALit Integer
           | ASub Aexp Aexp
           | AMul Aexp Aexp
           | ADiv Aexp Aexp
+          | ATrue
+          | AFalse
           deriving Show
 
 data Bexp = BLit Bool
@@ -171,6 +172,8 @@ compileAexp (AVar x) = [Fetch x]
 compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
 compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
 compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
+compileAexp (ATrue) = [Tru]
+compileAexp (AFalse) = [Fals]
 
 compileBexp :: Bexp -> Code
 compileBexp (BLit b) = [if b then Tru else Fals]
@@ -221,7 +224,7 @@ parseStm' tokens stms = do
 
 parseStmPart :: [String] -> Either String (Stm, [String])
 parseStmPart [] = Left "parseStmPart: unexpected end of input"
-parseStmPart ("if" : rest) = parseIf rest
+parseStmPart ("if" : rest) = parseIf ("if" : rest)
 parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
   Right (SAssign var expr, rest')
@@ -270,6 +273,8 @@ parseTerm ("(":rest) = do
   case restTokens of
     ")":moreTokens -> Right (exp, moreTokens)
     _ -> Left "parseTerm: missing closing parenthesis"
+parseTerm ("true":xs) = Right (ATrue, xs)
+parseTerm ("false":xs) = Right (AFalse, xs)
 parseTerm (x:xs)
   | all isDigit x = Right (ALit (read x), xs)
   | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
@@ -295,7 +300,7 @@ extractInsideCode tokens = go [] tokens
       let (beforeDelim, afterDelim) = break (== delim) tokens
       in (filter (not . null) beforeDelim, afterDelim)
 
-      
+--Must pass to it with the token starting with if
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf tokens = do
     let (conditionTokens, rest1) = extractInsideCode tokens
@@ -320,13 +325,13 @@ parseNegatedBexp rest = do
 
     
 parseBexpTokens :: [String] -> Either String (Bexp, [String])
-parseBexpTokens ("true":rest) = Right (BLit True, rest)
-parseBexpTokens ("false":rest) = Right (BLit False, rest)
+
 parseBexpTokens ("(":rest) = do
   (bexp, remaining) <- parseBexpTokens rest
   case remaining of
+    [] -> Left "parseBexpTokens: Missing closing parenthesis"
     (")":xs) -> Right (bexp, xs)
-    _ -> Left "parseBexpTokens: Missing closing parenthesis"
+    _ -> Left "parseBexpTokens: Invalid expression or comparison"
 parseBexpTokens ("not":rest) = do
   (bexp, remaining) <- parseBexpTokens rest
   Right (BNot bexp, remaining)
