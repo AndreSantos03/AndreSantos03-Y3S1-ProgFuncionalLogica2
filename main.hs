@@ -227,6 +227,7 @@ parseStm' tokens stms = do
 parseStmPart :: [String] -> Either String (Stm, [String])
 parseStmPart [] = Left "parseStmPart: unexpected end of input"
 parseStmPart ("if" : rest) = parseIf ("if" : rest)
+parseStmPart ("while" : rest) = parseWhile ("while" : rest)
 parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
   Right (SAssign var expr, rest')
