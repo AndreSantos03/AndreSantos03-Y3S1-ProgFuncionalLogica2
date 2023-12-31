@@ -146,7 +146,7 @@ compileAexp (ATrue) = [Tru]
 compileAexp (AFalse) = [Fals]
 ```
 
-`compileBexp` does the same for boolean expressions (Bexp), dealing with literals, equality, inequality, logical operations, and negation. 
+`compileBexp` does the same for boolean expressions (`Bexp`), dealing with literals, equality, inequality, logical operations, and negation. 
 
 ```haskell
 compileBexp :: Bexp -> Code
