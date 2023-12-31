@@ -2,9 +2,9 @@
 
 T03_G07
 
-André Bernardo Ferreira Santos (up202108658) - 50%
+André Bernardo Ferreira Santos (up202108658)
 
-Inês Ferreira de Almeida (up202004513) - 50%
+Inês Ferreira de Almeida (up202004513)
 
 ## Introduction
 
