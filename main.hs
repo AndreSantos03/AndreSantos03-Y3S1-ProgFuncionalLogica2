@@ -157,6 +157,8 @@ data Aexp = ALit Integer
           | ADiv Aexp Aexp
           | ATrue
           | AFalse
+          | ATrue
+          | AFalse
           deriving Show
 
 data Bexp = BLit Bool
@@ -180,6 +182,8 @@ compileAexp (AVar x) = [Fetch x]
 compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
 compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
 compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
+compileAexp (ATrue) = [Tru]
+compileAexp (AFalse) = [Fals]
 compileAexp (ATrue) = [Tru]
 compileAexp (AFalse) = [Fals]
 
@@ -242,6 +246,8 @@ parseStm' tokens stms = do
 parseStmPart :: [String] -> Either String (Stm, [String])
 parseStmPart [] = Left "parseStmPart: unexpected end of input"
 parseStmPart ("if" : rest) = parseIf ("if" : rest)
+parseStmPart ("if" : rest) = parseIf ("if" : rest)
+parseStmPart ("while" : rest) = parseWhile ("while" : rest)
 parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
   Right (SAssign var expr, rest')
