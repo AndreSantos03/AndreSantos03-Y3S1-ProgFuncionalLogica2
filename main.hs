@@ -76,7 +76,6 @@ run (Mult:code, IVal n1 : IVal n2 : stack, state) =
     trace ("MultCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 * n2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, IVal (n1 * n2) : stack, state)
 run (Tru:code, stack, state) =
-    trace ("TruCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal True : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal True : stack, state)
 run (Fals:code, stack, state) =
     trace ("FalsCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal False : stack) ++ "    State: " ++ state2Str state) $
@@ -155,8 +154,7 @@ data Aexp = ALit Integer
           | ASub Aexp Aexp
           | AMul Aexp Aexp
           | ADiv Aexp Aexp
-          | ATrue
-          | AFalse
+
           deriving Show
 
 data Bexp = BLit Bool
@@ -165,6 +163,8 @@ data Bexp = BLit Bool
           | BAnd Bexp Bexp
           | BOr Bexp Bexp
           | BNot Bexp
+          | BTrue
+          | BFalse
           deriving Show
 
 data Stm = SAssign String Aexp
@@ -180,8 +180,7 @@ compileAexp (AVar x) = [Fetch x]
 compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
 compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
 compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
-compileAexp (ATrue) = [Tru]
-compileAexp (AFalse) = [Fals]
+
 
 compileBexp :: Bexp -> Code
 compileBexp (BLit b) = [if b then Tru else Fals]
@@ -189,6 +188,8 @@ compileBexp (BEq a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Equ]
 compileBexp (BLe a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Le]
 compileBexp (BAnd b1 b2) = compileBexp b1 ++ compileBexp b2 ++ [And]
 compileBexp (BNot b) = compileBexp b ++ [Neg]
+compileBexp (BTrue) = [Tru]
+compileBexp (BFalse) = [Fals]
 
 -- Compiles a single statement into Code
 compileStm :: Stm -> Code
@@ -288,86 +289,36 @@ parseTerm ("(":rest) = do
   case restTokens of
     ")":moreTokens -> Right (exp, moreTokens)
     _ -> Left "parseTerm: missing closing parenthesis"
-parseTerm ("true":xs) = Right (ATrue, xs) -- Handle boolean literal "true"
-parseTerm ("false":xs) = Right (AFalse, xs) -- Handle boolean literal "false"
 parseTerm (x:xs)
   | all isDigit x = Right (ALit (read x), xs)
   | isAlpha (head x) && all isLower x = Right (AVar x, xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ x
 
-
-
-
-
-
-takeUntilIncluding :: String -> [String] -> ([String], [String])
-takeUntilIncluding delim tokens =
+takeUntil :: Eq a => a -> [a] -> ([a], [a])
+takeUntil delim tokens =
   let (beforeDelim, afterDelim) = span (/= delim) tokens
-      includingDelim = takeWhile (== delim) afterDelim
-  in (filter (not . null) beforeDelim, includingDelim ++ drop (length includingDelim) afterDelim)
+  in (beforeDelim, drop 1 afterDelim)
 
-takeUntilExcluding :: String -> [String] -> ([String], [String])
-takeUntilExcluding delim tokens =
-  let (beforeDelim, afterDelim) = span (/= delim) tokens
-  in (filter (not . null) beforeDelim, afterDelim)
-
--- This function is served to pick the code inside the conditionals and the then and else statements
 extractInsideCode :: [String] -> ([String], [String], [String])
-extractInsideCode tokens = 
-    let (conditionTokens, afterCondition) = break (== "then") tokens
-        (thenTokens, afterThen) = break (== "else") (drop 1 afterCondition) -- Drop "then" and extract then part
-        elseTokens = drop 1 afterThen -- Drop "else" and extract else part
-    in (tail conditionTokens, thenTokens, elseTokens)  -- Drop the opening "(" from conditionTokens
+extractInsideCode tokens =
+  let (conditionTokens, afterCondition) = takeUntil "then" tokens
+      (thenTokens, afterThen) = takeUntil "else" afterCondition
+      (elseTokens, _) = if null afterThen
+                          then ([], [])
+                          else takeUntil ";" afterThen
+  in (conditionTokens, thenTokens, elseTokens)
 
 
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf ("if":rest) = do
     let (conditionTokens, thenTokens, elseTokens) = extractInsideCode rest
-    (condition, _) <- parseBexpTokens conditionTokens
+    (condition, _) <- parseComplexBexp conditionTokens
     (thenStatement, _) <- parseStm thenTokens
     (elseStatement, remaining) <- parseStm elseTokens
     Right (SIf condition thenStatement elseStatement, remaining)
 parseIf _ = Left "Invalid input to parseIf"
-  
 
-
-
-parseNegatedBexp :: [String] -> Either String (Bexp, [String])
-parseNegatedBexp ("(":rest) = do
-  (bexp, remaining) <- parseBexpTokens rest
-  Right (BNot bexp, remaining)
-parseNegatedBexp rest = do
-  (bexp, remaining) <- parseBexpTokens rest
-  Right (BNot bexp, remaining)
-
-parseBexpTokens :: [String] -> Either String (Bexp, [String])
-parseBexpTokens [] = Left "Unexpected end of input while parsing a boolean expression."
-
-parseBexpTokens ("not":rest) = do
-  trace ("Parsing BexpTokens (not): " ++ show ("not":rest)) $ return ()
-  (bexp, remaining) <- parseBexpTokens rest
-  Right (BNot bexp, remaining)
-
-parseBexpTokens (op:rest) | op == "&&" = do
-  trace ("Parsing BexpTokens (&&): " ++ show (op:rest)) $ return ()
-  (bexp1, remaining1) <- parseBexpTokens rest
-  (bexp2, remaining2) <- parseBexpTokens remaining1
-  Right (BAnd bexp1 bexp2, remaining2)
-
-parseBexpTokens tokens@(firstToken:_) = do
-  trace ("Parsing BexpTokens: " ++ show tokens) $ return ()
-  if firstToken `elem` ["true", "false"]
-    then parseBooleanLiteral tokens
-    else parseComplexBexp tokens
-
-
-
-parseBooleanLiteral :: [String] -> Either String (Bexp, [String])
-parseBooleanLiteral ("true":xs) = Right (BLit True, xs)
-parseBooleanLiteral ("false":xs) = Right (BLit False, xs)
-parseBooleanLiteral _ = Left "Expected a boolean literal"
-
-parseComplexBexp :: [String] -> Either String (Bexp, [String])
+{- parseComplexBexp :: [String] -> Either String (Bexp, [String])
 parseComplexBexp tokens = do
   (exp1, tokensAfterExp1) <- parseAexp tokens
   (operator, rest) <- parseOperator tokensAfterExp1
@@ -375,23 +326,92 @@ parseComplexBexp tokens = do
   let comparison = case operator of
         "==" -> BEq exp1 exp2
         "<=" -> BLe exp1 exp2
-        -- Add other operators as needed
+        "and" -> BAnd exp1 exp2
         _    -> error "Unknown comparison operator"
   if null remaining
     then Right (comparison, remaining)
     else do
       (restOfBexp, finalTokens) <- parseComplexBexp remaining
-      Right (BAnd comparison restOfBexp, finalTokens)
+      Right (BAnd comparison restOfBexp, finalTokens) -}
+    
+parseComplexBexp :: [String] -> Either String (Bexp, [String])
+parseComplexBexp tokens = do
+    if "(" `elem` tokens && ")" `elem` tokens
+      then if head tokens == "(" && last tokens == ")"
+        then parseComplexBexp (init (tail tokens))  -- Removes the outer parentheses and retries
+        else Left "Unmatched parentheses" 
+    else if "and" `elem` tokens
+      then do
+        let (beforeAnd, (_:afterAnd)) = break (== "and") tokens
+        (exp1, _) <- parseComplexBexp beforeAnd
+        (exp2, remaining) <- parseComplexBexp afterAnd
+        let comparison = BAnd exp1 exp2
+        if null remaining
+          then Right (comparison, remaining)
+          else do
+            (restOfBexp, finalTokens) <- parseComplexBexp remaining
+            Right (comparison, finalTokens)
+    else if head tokens == "true"
+      then Right (BTrue, tail tokens)
+    else if head tokens == "false"
+      then Right (BFalse, tail tokens)
+    else if "==" `elem` tokens || "<=" `elem` tokens
+      then do
+        (operator, before, after) <- parseOperator tokens
+        case operator of
+          "==" -> do
+            (exp1, tokensAfterExp1) <- parseAexp before
+            (exp2, remaining) <- parseAexp after
+            let comparison = BEq exp1 exp2
+            if null remaining
+              then Right (comparison, remaining)
+              else do
+                (restOfBexp, finalTokens) <- parseComplexBexp remaining
+                Right (comparison, finalTokens)
+          "<=" -> do
+            (exp1, tokensAfterExp1) <- parseAexp before
+            (exp2, remaining) <- parseAexp after
+            let comparison = BLe exp1 exp2
+            if null remaining
+              then Right (comparison, remaining)
+              else do
+                (restOfBexp, finalTokens) <- parseComplexBexp remaining
+                Right (comparison, finalTokens)
+          _ -> error "Unknown comparison operator"
+      else do
+        (operator, before, after) <- parseOperator tokens
+        case operator of
+          "not" -> do
+            (bexp, remaining) <- parseComplexBexp after
+            Right (BNot bexp, remaining)
+          _ -> error "Unknown operator"
 
-parseOperator :: [String] -> Either String (String, [String])
+
+parseOperator :: [String] -> Either String (String, [String], [String])
+parseOperator [] = Left "Expected a comparison operator, but got an empty list."
+parseOperator (op:rest)
+  | op `elem` ["==", "<=", "and", "not"] = Right (op, [], rest)
+  | otherwise = case parseOperator rest of
+                  Right (operator, before, after) -> Right (operator, op:before, after)
+                  Left err -> Left err
+
+{- parseOperator :: [String] -> Either String (String, [String])
 parseOperator ("==":rest) = Right ("==", rest)
 parseOperator ("<=":rest) = Right ("<=", rest)
--- Add other operators if needed
-parseOperator tokens = Left $ "Expected a comparison operator, but got: " ++ show tokens
+parseOperator ("and":rest) = Right ("and", rest)
+parseOperator ("not":rest) = Right ("not", rest)
 
+parseOperator tokens = Left $ "Expected a comparison operator, but got: " ++ show tokens -}
 
+{- parseBexpTokens ("not":rest) = do
+  (bexp, remaining) <- parseBexpTokens rest
+  Right (BNot bexp, remaining)
+parseBexpTokens (x:"and":xs) = do
+  (b1, remaining1) <- parseBexpTokens [x]
+  (b2, remaining2) <- parseBexpTokens xs
+  Right (BAnd b1 b2, remaining2)
 
-
+ -}
 
 
 parse :: String -> [Stm]
