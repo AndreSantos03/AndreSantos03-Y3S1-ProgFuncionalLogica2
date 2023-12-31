@@ -94,8 +94,6 @@ This part of the assignment involves creating a small imperative programming lan
 
 ### a) Data types that define the structure of the imperative programming language
 
-Data types that define the structure of the imperative programming language for the assignment:
-
 `Aexp` represents arithmetic expressions, including literals, variables, additions, subtractions, multiplications, divisions, and boolean literals for true and false.
 
 ```haskell
@@ -133,4 +131,45 @@ data Stm = SAssign String Aexp
          deriving Show
 ```
 
-### b)
+### b) Compiler
+
+`compileAexp` translates arithmetic expressions (`Aexp`) into machine code, handling literals, variables, basic arithmetic operations, and boolean values. 
+
+```haskell
+compileAexp :: Aexp -> Code
+compileAexp (ALit n) = [Push n]
+compileAexp (AVar x) = [Fetch x]
+compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
+compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
+compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
+compileAexp (ATrue) = [Tru]
+compileAexp (AFalse) = [Fals]
+```
+
+`compileBexp` does the same for boolean expressions (Bexp), dealing with literals, equality, inequality, logical operations, and negation. 
+
+```haskell
+compileBexp :: Bexp -> Code
+compileBexp (BLit b) = [if b then Tru else Fals]
+compileBexp (BEq a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Equ]
+compileBexp (BLe a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Le]
+compileBexp (BAnd b1 b2) = compileBexp b1 ++ compileBexp b2 ++ [And]
+compileBexp (BNot b) = compileBexp b ++ [Neg]
+```
+
+`compileStm` converts statements (`Stm`) like assignments, sequences, conditionals, and loops into code. 
+
+```haskell
+compileStm :: Stm -> Code
+compileStm (SAssign x a) = compileAexp a ++ [Store x]
+compileStm (SSeq s1 s2) = compileStm s1 ++ compileStm s2
+compileStm (SIf b s1 s2) = compileBexp b ++ [Branch (compileStm s1) (compileStm s2)]
+compileStm (SWhile b s) = [Loop (compileBexp b) (compileStm s)]
+```
+
+The main `compile` function aggregates these conversions for a list of statements, forming the compiled program.
+
+```haskell
+compile :: [Stm] -> Code
+compile statements = concatMap compileStm statements
+```
