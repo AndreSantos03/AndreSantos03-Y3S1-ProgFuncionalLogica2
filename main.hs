@@ -1,11 +1,13 @@
-import Data.Char (toLower, isDigit, isAlpha, isLower)
+import Data.Char (toLower, isDigit, isAlpha, isLower,isSpace)
 import Data.List (intercalate, sortBy)
 import Data.Ord (comparing)
 import Debug.Trace (trace)
+import System.IO.Unsafe (unsafePerformIO)
+
 
 
 data Inst =
-  Push Integer | Add | Mult | Sub | Tru | Fals | Equ | Le | And | Neg | Fetch String | Store String | Noop |
+  Push Integer | Add | Mult | Sub | Tru | Fals | Equ | Le | And | Neg | Fetch String | Store String | 
   Branch Code Code | Loop Code Code
   deriving Show
 type Code = [Inst]
@@ -61,25 +63,25 @@ getConditionResult _ = error "Condition did not evaluate to a boolean value"
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
 run ((Push n):code, stack, state) =
-    trace ("Push " ++ show n) $
+    trace ("Push " ++ show n ++ "    Code: " ++ show code ++ "    Stack: " ++ stack2Str (IVal n : stack) ++ "    State: " ++ state2Str state) $
     run (code, IVal n : stack, state)
 run (Add:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Add") $
+    trace ("AddCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 + n2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, IVal (n1 + n2) : stack, state)
 run (Sub:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Sub") $
+    trace ("SubCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 - n2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, IVal (n1 - n2) : stack, state)
 run (Mult:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Mult") $
+    trace ("MultCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 * n2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, IVal (n1 * n2) : stack, state)
 run (Tru:code, stack, state) =
-    trace ("Tru") $
+    trace ("TruCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal True : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal True : stack, state)
 run (Fals:code, stack, state) =
-    trace ("Fals") $
+    trace ("FalsCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal False : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal False : stack, state)
 run ((Store var):code, val:stack, (s, store)) =
-    trace ("Store " ++ var ++ " " ++ showStackVal val ++ " Pre-store: " ++ state2Str (s, store)) $
+    trace ("Store " ++ var ++ " " ++ showStackVal val ++ "     Pre-store: " ++ state2Str (s, store) ++ "    Code: " ++ show code ++     "Stack: " ++ stack2Str stack) $
     let updatedStore = updateStore var val store
     in trace ("Post-store: " ++ state2Str (s, updatedStore)) $
        run (code, stack, (s, updatedStore))
@@ -90,18 +92,19 @@ run ((Store var):code, val:stack, (s, store)) =
       | otherwise = (v, sVal) : updateStore var val vs
 run ((Fetch varName):code, stack, state@(_, store)) =
     case lookup varName store of
-        Just val -> trace ("Fetch " ++ varName) $ run (code, val : stack, state)
+        Just val -> trace ("Fetch " ++ varName ++ "    Code: " ++ show code ++ "    Stack: " ++ stack2Str (val : stack) ++ "    State: " ++ state2Str state) $ 
+                    run (code, val : stack, state)
         Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
 run (Neg:code, BVal b : stack, state) =
-    trace ("Neg") $
+    trace ("NegCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal (not b) : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal (not b) : stack, state)
 run (Neg:code, stack, state) =
     error "Neg instruction expects a boolean value on top of the stack"
 run (Equ:code, v1 : v2 : stack, state) =
-    trace ("Equ") $
+    trace ("EquCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal (v1 == v2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal (v1 == v2) : stack, state)
 run (Le:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("Le") $
+    trace ("LeCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal (n1 <= n2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal (n1 <= n2) : stack, state)  -- Ensure that n1 is the last pushed value
 run (Le:_, _, _) =
     error "Le instruction requires two integer values on top of the stack"
@@ -112,10 +115,10 @@ run (Loop condition body:restCode, stack, state) =
             in run (Loop condition body:restCode, bodyStack, bodyState)
        else run (restCode, stack, state)
 run (And:code, BVal b1 : BVal b2 : stack, state) =
-    trace ("And") $
+    trace ("AndCode: " ++ show code ++ "  Stack: " ++ stack2Str (BVal (b1 && b2) : stack) ++ "    State: " ++ state2Str state) $
     run (code, BVal (b1 && b2) : stack, state)
 run (And:_, _, _) =
-    error "Run-time error: 'And' operation requires two boolean values on top of the stack"
+    error "Runtime error: 'And' operation requires two boolean values on top of the stack"
 
 -- Implement other instructions as needed.
 
@@ -125,33 +128,19 @@ testAssembler :: Code -> (String, String)
 testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
+
+
+
+
 main :: IO ()
 main = do
-    putStrLn "Testing parseStm:"
-    putStrLn "-------------------"
+  let example1 = ["this", ";", "is", ";", "a", ";", "test", ";", "end"]
+  let example2 = ["a", "b", "c", ";", ";", ";", "d", "e", "f"]
 
-    let input1 = ["x", ":=", "5", ";"]
-    let input2 = ["y", ":=", "x", "+", "3",";"]
-    let input3 = ["z", ":=", "(", "x", "+", "y", ")", ";"]
-    let input4 = ["a", ":=", "5", "+", ";"]  -- Invalid due to missing right operand
-    let input5 = ["b", ":=", "5", "7", "+", "3", ";"]  -- Invalid due to unexpected tokens
-
-    putStrLn "Input 1:"
-    print (parseStm input1)
-
-    putStrLn "Input 2:"
-    print (parseStm input2)
-
-    putStrLn "Input 3:"
-    print (parseStm input3)
-
-    putStrLn "Input 4:"
-    print (parseStm input4)
-
-    putStrLn "Input 5:"
-    print (parseStm input5)
-
-
+  let result1 = takeUntilIncluding ";" example1
+  putStrLn "Result 1:"
+  print result1
+  -- Expected output for example1: (["this"], [";", "is", ";", "a", ";", "test", ";", "end"])
 
 data Aexp = ALit Integer
           | AVar String
@@ -159,6 +148,8 @@ data Aexp = ALit Integer
           | ASub Aexp Aexp
           | AMul Aexp Aexp
           | ADiv Aexp Aexp
+          | ATrue
+          | AFalse
           deriving Show
 
 data Bexp = BLit Bool
@@ -173,6 +164,7 @@ data Stm = SAssign String Aexp
          | SSeq Stm Stm
          | SIf Bexp Stm Stm
          | SWhile Bexp Stm
+         | Noop
          deriving Show
 
 compileAexp :: Aexp -> Code
@@ -181,6 +173,8 @@ compileAexp (AVar x) = [Fetch x]
 compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
 compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
 compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
+compileAexp (ATrue) = [Tru]
+compileAexp (AFalse) = [Fals]
 
 compileBexp :: Bexp -> Code
 compileBexp (BLit b) = [if b then Tru else Fals]
@@ -201,57 +195,92 @@ compile :: [Stm] -> Code
 compile statements = concatMap compileStm statements
 
 lexer :: String -> [String]
-lexer = words . map (\c -> if c `elem` ";()" then ' ' else c)
+lexer [] = []
+lexer (c:cs)
+  | isSpace c = lexer cs
+  | isAlpha c = let (token, rest) = span isAlpha (c:cs)
+                in token : lexer rest
+  | isDigit c = let (token, rest) = span isDigit (c:cs)
+                in token : lexer rest
+  | c == '=' && not (null cs) && head cs == '=' = ["=="] ++ lexer (drop 1 cs)
+  | c == ':' && not (null cs) && head cs == '=' = [":="] ++ lexer (drop 1 cs)
+  | c == '<' && not (null cs) && head cs == '=' = ["<="] ++ lexer (drop 1 cs)
+  | c `elem` "+-*/:=();" = [c] : lexer cs
+  | otherwise = lexer cs
 
 
--- Parses a list of statements from a list of tokens.
-parseStms :: [String] -> ([Stm], [String])
-parseStms [] = ([], [])
-parseStms tokens =
-  let (stm, rest) = parseStm tokens
-      (stms, rest') = parseStms rest
-  in (stm : stms, rest')  -- Recursively build the list of statements
+parseStm :: [String] -> Either String (Stm, [String])
+parseStm [] = Right (Noop, [])
+  -- Assuming Noop is a valid no-operation statement
+parseStm tokens = parseStm' tokens []
+
+parseStm' :: [String] -> [Stm] -> Either String (Stm, [String])
+parseStm' [] stms = Right (foldr1 SSeq (reverse stms), [])
+parseStm' tokens stms = do
+  (stm, remainingTokens) <- parseStmPart tokens
+  case remainingTokens of
+    ";" : rest -> parseStm' rest (stm : stms)
+    _ -> Left $ "parseStm': expected semicolon after assignment, got " ++ show remainingTokens
+
+-- SSeq should be a statement that represents a sequence of statements
+
+parseStmPart :: [String] -> Either String (Stm, [String])
+parseStmPart [] = Left "parseStmPart: unexpected end of input"
+parseStmPart ("if" : rest) = parseIf ("if" : rest)
+parseStmPart ("while" : rest) = parseWhile ("while" : rest)
+parseStmPart (var : ":=" : rest) = do
+  (expr, rest') <- parseAexp rest
+  Right (SAssign var expr, rest')
+-- ... other cases such as "while", "sequence of statements", etc.
 
 
-
-parseStm :: [String] -> (Stm, [String])
-parseStm tokens = 
-  let debugTokens = show tokens
-      debugResult = case tokens of
-        (var : ":=" : rest) ->
-          case parseAexp rest of
-            Left errMsg -> error errMsg  -- Handle parsing error here
-            Right (expr, rest') ->
-              case rest' of
-                ";" : rest'' -> (SAssign var expr, rest'')
-                _ -> error $ "parseStm: expected semicolon after assignment, got " ++ show rest'
-        _ -> error $ "parseStm: unexpected tokens: " ++ show tokens
-  in trace ("parseStm called with tokens: " ++ debugTokens ++ " and produced: " ++ show debugResult) debugResult
-
-
--- Parses an arithmetic expression
 parseAexp :: [String] -> Either String (Aexp, [String])
-parseAexp [] = Left "parseAexp: unexpected end of input"
-parseAexp (x:xs)
+parseAexp tokens = parseAddSub tokens
+
+parseAddSub :: [String] -> Either String (Aexp, [String])
+parseAddSub tokens = do
+  (term1, rest) <- parseMulDiv tokens
+  parseAddSub' rest term1
+
+parseAddSub' :: [String] -> Aexp -> Either String (Aexp, [String])
+parseAddSub' [] expr = Right (expr, [])
+parseAddSub' (op : tokens) expr
+  | op `elem` ["+", "-"] = do
+    (term, rest) <- parseMulDiv tokens
+    case op of
+      "+" -> parseAddSub' rest (AAdd expr term)
+      "-" -> parseAddSub' rest (ASub expr term)
+      _   -> Left "Unexpected operator"
+  | otherwise = Right (expr, op : tokens)
+
+parseMulDiv :: [String] -> Either String (Aexp, [String])
+parseMulDiv tokens = do
+  (factor1, rest) <- parseTerm tokens
+  parseMulDiv' rest factor1
+
+parseMulDiv' :: [String] -> Aexp -> Either String (Aexp, [String])
+parseMulDiv' [] expr = Right (expr, [])
+parseMulDiv' (op : tokens) expr
+  | op `elem` ["*", "/"] = do
+    (factor, rest) <- parseTerm tokens
+    case op of
+      "*" -> parseMulDiv' rest (AMul expr factor)
+      "/" -> parseMulDiv' rest (ADiv expr factor)
+      _   -> Left "Unexpected operator"
+  | otherwise = Right (expr, op : tokens)
+
+parseTerm :: [String] -> Either String (Aexp, [String])
+parseTerm [] = Left "parseTerm: unexpected end of input"
+parseTerm ("(":rest) = do
+  (exp, restTokens) <- parseAexp rest
+  case restTokens of
+    ")":moreTokens -> Right (exp, moreTokens)
+    _ -> Left "parseTerm: missing closing parenthesis"
+parseTerm ("true":xs) = Right (ATrue, xs)
+parseTerm ("false":xs) = Right (AFalse, xs)
+parseTerm (x:xs)
   | all isDigit x = Right (ALit (read x), xs)
   | isAlpha (head x) && isLower (head x) = Right (AVar x, xs)
-<<<<<<< Updated upstream
-  | x == "(" =
-      case parseAexp xs of
-        Left errMsg -> Left errMsg
-        Right (a1, op:rest2) ->
-          case parseAexp rest2 of
-            Left errMsg -> Left errMsg
-            Right (a2, ")" : rest3) ->
-              case op of
-                "+" -> Right (AAdd a1 a2, rest3)
-                "-" -> Right (ASub a1 a2, rest3)
-                "*" -> Right (AMul a1 a2, rest3)
-                _   -> Left $ "parseAexp: unknown operator " ++ op
-            _ -> Left "parseAexp: missing closing parenthesis"
-        _ -> Left "parseAexp: missing left operand"
-  | otherwise = Left $ "parseAexp: unexpected token " ++ show x
-=======
   | otherwise = Left $ "parseTerm: unexpected token " ++ show x
 
 
@@ -360,20 +389,52 @@ parseBexpTokens (x:"<=":xs) = do
   Right (BLe a1 a2, remaining2)
 parseBexpTokens ("true":xs) = Right (BLit True, xs)
 parseBexpTokens ("false":xs) = Right (BLit False, xs)
+
+
+
 parseBexpTokens tokens = Left $ "parseBexpTokens: Invalid expression or comparison at token: " ++ unwords tokens
 
->>>>>>> Stashed changes
 
 
--- Parses the entire program string into a list of statements
 parse :: String -> [Stm]
-parse str = 
+parse str =
   let tokens = lexer str
-      (stms, _) = parseStms tokens
-  in stms
+  in unsafePerformIO $ do
+       putStrLn $ "Tokens in parse: " ++ show tokens
+       parseUntilEmpty tokens []
+
+  where
+    parseUntilEmpty :: [String] -> [Stm] -> IO [Stm]
+    parseUntilEmpty [] parsed = return parsed
+    parseUntilEmpty remainingTokens parsed = do
+      case parseStm remainingTokens of
+        Left err -> error $ "Parsing error: " ++ err
+        Right (stm, newRemaining) -> parseUntilEmpty newRemaining (parsed ++ [stm])
 
 
-testParser :: String -> (String, String)
+
+{- parse :: String -> [Stm]
+parse str =
+  let tokens = lexer str
+      tokensStr = trace ("Tokens in parse: " ++ show tokens) tokens
+
+  in case parseStm tokens of
+       Left err -> error $ "Parsing error: " ++ err
+       Right (stms, _) -> stms
+ -}
+
+ 
+{- testParser :: String -> (String, String)
 testParser programCode = (stack2Str stack, state2Str state)
   where (_, stack, state) = run(compile (parse programCode), createEmptyStack, createEmptyState)
 
+ -}
+
+
+testParser :: String -> (String, String)
+testParser programCode = (instructionStr, finalStateStr)
+  where
+    instructions = parse programCode
+    instructionStr = trace ("Instructions generated from parsing: " ++ show instructions) ""
+    (_, _, finalState) = run (compile instructions, createEmptyStack, createEmptyState)
+    finalStateStr = state2Str finalState
