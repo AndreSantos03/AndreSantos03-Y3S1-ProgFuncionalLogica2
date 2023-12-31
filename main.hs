@@ -291,9 +291,10 @@ takeUntilIncluding delim tokens =
   in (filter (not . null) beforeDelim, includingDelim ++ drop (length includingDelim) afterDelim)
 
 takeUntilExcluding :: String -> [String] -> ([String], [String])
+takeUntilExcluding _ [] = ([], [])
 takeUntilExcluding delim tokens =
-  let (beforeDelim, afterDelim) = span (/= delim) tokens
-  in (filter (not . null) beforeDelim, afterDelim)
+    let (beforeDelim, afterDelim) = break (== delim) tokens
+    in (beforeDelim, drop 1 afterDelim)
 
 -- This function is served to pick the code inside the conditionals and the then and else statements
 extractInsideCode :: [String] -> ([String], [String])
@@ -306,6 +307,12 @@ extractInsideCode tokens = go [] tokens
       | head xs == "(" = let (insideElse, rest) = takeUntilIncluding ")" xs
                           in (tail insideElse, rest)
       | otherwise = takeUntilIncluding ";" xs
+    go acc ("do":xs) 
+      -- | head xs == "(" = takeUntilIncluding ")" xs
+      | head xs == "(" = let (insideElse, rest) = takeUntilIncluding ")" xs
+                          in (tail insideElse, rest)
+      | otherwise = takeUntilIncluding ";" xs
+    go acc ("while":xs) = takeUntilExcluding "do" xs
     go acc ("(":xs) = go ("(":acc) xs
     go acc (")":xs) =
       if null acc then ([], xs)
@@ -314,6 +321,16 @@ extractInsideCode tokens = go [] tokens
     go acc (x:xs) = go (x : acc) xs
     go acc [] = (reverse acc, [])
   
+parseWhile :: [String] -> Either String (Stm, [String])
+parseWhile tokens = do
+    let (conditionTokens, rest1) = extractInsideCode tokens
+    trace ("Conditional tokens: " ++ show conditionTokens) $ return ()
+    (condition, rest2) <- parseBexpTokens conditionTokens
+    let (bodyTokens, rest3) = extractInsideCode rest1
+    trace ("Body tokens: " ++ show bodyTokens) $ return ()
+    (bodyStatement, rest4) <- parseStm bodyTokens
+    Right (SWhile condition bodyStatement, rest3)
+
 --Must pass to it with the token starting with if
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf tokens = do
