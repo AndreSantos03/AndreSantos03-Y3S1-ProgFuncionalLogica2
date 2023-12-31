@@ -12,7 +12,7 @@ Here, we explore the implementation of a low-level machine and a simple imperati
 
 ## 1. Machine Implementation
 
-This first part of the assignment involves building a low-level machine with a configuration comprising code, an evaluation stack, and storage. It focuses on executing arithmetic and boolean expressions using a set of instructions like push, add, mult, sub, and more. The task includes defining types for the machine's stack (`Stack`) and state (`State`), and implementing functions such as `createEmptyStack`, `stack2Str`, and an interpreter function `run`.
+The first part of the assignment involves building a low-level machine with a configuration comprising code, an evaluation stack, and storage. It focuses on executing arithmetic and boolean expressions using a set of instructions like push, add, mult, sub, and more. The task includes defining types for the machine's stack (`Stack`) and state (`State`), and implementing functions such as `createEmptyStack`, `stack2Str`, and an interpreter function `run`.
 
 The `Inst` data type defines instructions for a basic computational machine, including arithmetic (`Add`, `Mult`, `Sub`), boolean operations (`Tru`, `Fals`, `Equ`, `Le`, `And`, `Neg`), memory operations (`Fetch`, `Store`), and control flow (`Branch`, `Loop`). `Code` is a sequence of these instructions.
 
@@ -73,7 +73,7 @@ showStackVal (BVal True) = "True"
 showStackVal (BVal False) = "False"
 ```
 
-### e) State to String
+### f) State to String
 
 The `state2Str` function in converts the state's storage into a string representation. It formats each variable-value pair in the storage as "variable=value," sorting them alphabetically by variable name. This function handles different types of values: integers (`IVal`) and booleans (`BVal`) converting each to its appropriate string format.
 
