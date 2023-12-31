@@ -304,9 +304,11 @@ extractInsideCodeIf :: [String] -> ([String], [String], [String])
 extractInsideCodeIf tokens =
   let (conditionTokens, afterCondition) = takeUntil "then" tokens
       (thenTokens, afterThen) = takeUntil "else" afterCondition
-      (elseTokens, _) = if null afterThen
-                          then ([], [])
-                          else takeUntil ";" afterThen
+      closingIndex = findMatchingIndex afterThen 0 0
+      elseTokens = if closingIndex > 0
+                     {- then take (closingIndex + 1) afterCondition -}
+                    then init (tail (take (closingIndex + 1) afterThen)) 
+                    else []
   in (conditionTokens, thenTokens, elseTokens)
 
 
