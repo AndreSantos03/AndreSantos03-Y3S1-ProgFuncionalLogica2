@@ -18,7 +18,7 @@ The `Inst` data type defines instructions for a basic computational machine, inc
 
 ```haskell
 data Inst =
-  Push Integer | Add | Mult | Sub | Tru | Fals | Equ | Le | And | Neg | Fetch String | Store String | 
+  Push Integer | Add | Mult | Sub | Tru | Fals | Equ | Le | And | Neg | Fetch String | Store String |
   Branch Code Code | Loop Code Code
   deriving Show
 type Code = [Inst]
