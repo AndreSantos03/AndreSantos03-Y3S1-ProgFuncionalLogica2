@@ -76,7 +76,7 @@ showStackVal (BVal False) = "False"
 
 ### f) State to String
 
-The `state2Str` function in converts the state's storage into a string representation. It formats each variable-value pair in the storage as "variable=value," sorting them alphabetically by variable name. This function handles different types of values: integers (`IVal`) and booleans (`BVal`) converting each to its appropriate string format.
+The `state2Str` function converts the state's storage into a string representation. It formats each variable-value pair in the storage as "variable=value," sorting them alphabetically by variable name. This function handles different types of values: integers (`IVal`) and booleans (`BVal`) converting each to its appropriate string format.
 
 ```haskell
 state2Str :: State -> String
