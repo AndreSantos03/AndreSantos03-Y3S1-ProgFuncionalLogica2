@@ -244,6 +244,8 @@ parseStmPart ("while" : rest) = parseWhile ("while" : rest)
 parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
   Right (SAssign var expr, rest')
+parseStmPart unexpected = Left $ "Unexpected statement: " ++ unwords unexpected
+
 
 parseAexp :: [String] -> Either String (Aexp, [String])
 parseAexp tokens = parseAddSub tokens
@@ -285,7 +287,8 @@ parseTerm [] = Left "parseTerm: unexpected end of input"
 parseTerm ("(":rest) = do
   (exp, restTokens) <- parseAexp rest
   case restTokens of
-    ")":moreTokens -> Right (exp, moreTokens)
+    [] -> Left "parseTerm: missing closing parenthesis"
+    (")":moreTokens) -> Right (exp, moreTokens)
     _ -> Left "parseTerm: missing closing parenthesis"
 parseTerm (x:xs)
   | all isDigit x = Right (ALit (read x), xs)
@@ -329,8 +332,9 @@ extractInsideCodeWhile tokens =
   let (conditionTokens, afterCondition) = takeUntil "do" tokens
       closingIndex = findMatchingIndex afterCondition 0 0
       doTokens = if closingIndex > 0
-                     then take (closingIndex + 1) afterCondition
-                     else []
+                     {- then take (closingIndex + 1) afterCondition -}
+                    then init (tail (take (closingIndex + 1) afterCondition)) 
+                    else []
   in (conditionTokens,doTokens)   
 
 parseWhile :: [String] -> Either String (Stm, [String])
