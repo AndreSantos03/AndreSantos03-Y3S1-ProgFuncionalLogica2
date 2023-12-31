@@ -236,13 +236,11 @@ parseStm' tokens stms = do
       -- Handle the case where semicolon is missing
       _ -> Left $ "parseStm': expected semicolon after statement, got " ++ show remainingTokens
 
-
-
 -- SSeq should be a statement that represents a sequence of statements
-
 parseStmPart :: [String] -> Either String (Stm, [String])
 parseStmPart [] = Left "parseStmPart: unexpected end of input"
 parseStmPart ("if" : rest) = parseIf ("if" : rest)
+parseStmPart ("while" : rest) = parseWhile ("while" : rest)
 parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
   Right (SAssign var expr, rest')
@@ -299,8 +297,8 @@ takeUntil delim tokens =
   let (beforeDelim, afterDelim) = span (/= delim) tokens
   in (beforeDelim, drop 1 afterDelim)
 
-extractInsideCode :: [String] -> ([String], [String], [String])
-extractInsideCode tokens =
+extractInsideCodeIf :: [String] -> ([String], [String], [String])
+extractInsideCodeIf tokens =
   let (conditionTokens, afterCondition) = takeUntil "then" tokens
       (thenTokens, afterThen) = takeUntil "else" afterCondition
       (elseTokens, _) = if null afterThen
@@ -311,12 +309,38 @@ extractInsideCode tokens =
 
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf ("if":rest) = do
-    let (conditionTokens, thenTokens, elseTokens) = extractInsideCode rest
+    let (conditionTokens, thenTokens, elseTokens) = extractInsideCodeIf rest
     (condition, _) <- parseComplexBexp conditionTokens
     (thenStatement, _) <- parseStm thenTokens
     (elseStatement, remaining) <- parseStm elseTokens
     Right (SIf condition thenStatement elseStatement, remaining)
 parseIf _ = Left "Invalid input to parseIf"
+
+findMatchingIndex :: [String] -> Int -> Int -> Int
+findMatchingIndex tokens count index
+  | null tokens && count /= 0 = error "No matching ending parentheses."
+  | head tokens == "(" = findMatchingIndex (tail tokens) (count + 1) (index + 1)
+  | head tokens == ")" = if count == 1 then index else findMatchingIndex (tail tokens) (count - 1) (index + 1)
+  | otherwise = findMatchingIndex (tail tokens) count (index + 1)
+
+
+extractInsideCodeWhile :: [String] -> ([String], [String])
+extractInsideCodeWhile tokens = 
+  let (conditionTokens, afterCondition) = takeUntil "do" tokens
+      closingIndex = findMatchingIndex afterCondition 0 0
+      doTokens = if closingIndex > 0
+                     then take (closingIndex + 1) afterCondition
+                     else []
+  in (conditionTokens,doTokens)   
+
+parseWhile :: [String] -> Either String (Stm, [String])
+parseWhile ("while":tokens) = do
+    let (conditionTokens, doTokens) = extractInsideCodeWhile tokens
+    trace ("Conditional tokens: " ++ show conditionTokens) $ return ()
+    (condition, restConditional) <- parseComplexBexp conditionTokens
+    trace ("Body tokens: " ++ show doTokens) $ return ()
+    (bodyStatement, rest) <- parseStm doTokens
+    Right (SWhile condition bodyStatement, rest)
 
 {- parseComplexBexp :: [String] -> Either String (Bexp, [String])
 parseComplexBexp tokens = do
@@ -332,8 +356,8 @@ parseComplexBexp tokens = do
     then Right (comparison, remaining)
     else do
       (restOfBexp, finalTokens) <- parseComplexBexp remaining
-      Right (BAnd comparison restOfBexp, finalTokens) -}
-    
+      Right (BAnd comparison restOfBexp, finalTokens)
+     -}
 parseComplexBexp :: [String] -> Either String (Bexp, [String])
 parseComplexBexp tokens = do
     if "(" `elem` tokens && ")" `elem` tokens
