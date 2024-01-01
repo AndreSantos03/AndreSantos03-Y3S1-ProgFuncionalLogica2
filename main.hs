@@ -63,8 +63,8 @@ getConditionResult _ = error "Condition did not evaluate to a boolean value"
 
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
-run ((Push n):code, stack, state) =
-    trace ("Push " ++ show n ++ "    Code: " ++ show code ++ "    Stack: " ++ stack2Str (IVal n : stack) ++ "    State: " ++ state2Str state) $
+run ((Push n):code, stack, state) = do
+    putStrLn $ "Push " ++ show n ++ "\tStack: " ++ stack2Str (IVal n : stack)
     run (code, IVal n : stack, state)
 run (Add:code, IVal n1 : IVal n2 : stack, state) =
     trace ("AddCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 + n2) : stack) ++ "    State: " ++ state2Str state) $
@@ -139,14 +139,12 @@ testAssembler code = (stack2Str stack, state2Str state)
 
 
 
-
 main :: IO ()
 main = do
-  let programCode = "if (not true && 2 <= 3 == 4) then x := 1; else y := 2;"
-  case testParser programCode of
-    ("", finalStateStr) -> putStrLn $ "Parsed successfully with final state: " ++ finalStateStr
-    (instructionStr, finalStateStr) -> putStrLn $ "Parsed with instructions: " ++ instructionStr ++ " and final state: " ++ finalStateStr
-
+  putStrLn "Enter program code:"
+  input <- getLine
+  let finalState = runProgram input
+  print finalState
 
 data Aexp = ALit Integer
           | AVar String
@@ -344,7 +342,6 @@ parseWhile ("while":tokens) = do
     let (conditionTokens, doTokens) = extractInsideCodeWhile tokens
     trace ("Conditional tokens: " ++ show conditionTokens) $ return ()
     (condition, restConditional) <- parseComplexBexp conditionTokens
-    trace ("Body tokens: " ++ show doTokens) $ return ()
     (bodyStatement, rest) <- parseStm doTokens
     Right (SWhile condition bodyStatement, rest)
 
@@ -478,11 +475,20 @@ testParser programCode = (stack2Str stack, state2Str state)
 
  -}
 
+runProgram :: String -> State
+runProgram programCode = finalState
+  where
+    instructions = parse programCode
+    (_, _, finalState) = do
+      let compiledProg = compile instructions
+          stack = createEmptyStack
+          state = createEmptyState
+      run (compiledProg, stack, state)
 
-testParser :: String -> (String, String)
+{- testParser :: String -> (String, String)
 testParser programCode = (instructionStr, finalStateStr)
   where
     instructions = parse programCode
     instructionStr = trace ("Instructions generated from parsing: " ++ show instructions) ""
     (_, _, finalState) = run (compile instructions, createEmptyStack, createEmptyState)
-    finalStateStr = state2Str finalState
+    finalStateStr = state2Str finalState -}
