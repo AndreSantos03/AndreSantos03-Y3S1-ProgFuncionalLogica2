@@ -63,27 +63,27 @@ getConditionResult _ = error "Condition did not evaluate to a boolean value"
 
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
-run ((Push n):code, stack, state) = do
-    putStrLn $ "Push " ++ show n ++ "\tStack: " ++ stack2Str (IVal n : stack)
+run ((Push n):code, stack, state) =
+    trace ("- Push " ++ show n ++ "\tStack: " ++ stack2Str (IVal n : stack)) $
     run (code, IVal n : stack, state)
 run (Add:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("AddCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 + n2) : stack) ++ "    State: " ++ state2Str state) $
+    trace ("- Add " ++ show (n1 + n2) ++ "\tStack: " ++ stack2Str (IVal (n1 + n2) : stack)) $
     run (code, IVal (n1 + n2) : stack, state)
 run (Sub:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("SubCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 - n2) : stack) ++ "    State: " ++ state2Str state) $
+    trace ("- Sub " ++ show (n1 + n2) ++ "\tStack: " ++ stack2Str (IVal (n1 + n2) : stack)) $
     run (code, IVal (n1 - n2) : stack, state)
 run (Mult:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("MultCode: " ++ show code ++ "    Stack: " ++ stack2Str (IVal (n1 * n2) : stack) ++ "    State: " ++ state2Str state) $
+    trace ("- Mult " ++ show (n1 + n2) ++ "\tStack: " ++ stack2Str (IVal (n1 + n2) : stack)) $
     run (code, IVal (n1 * n2) : stack, state)
 run (Tru:code, stack, state) =
+    trace ("- Tru \tStack: " ++ stack2Str (BVal True : stack)) $
     run (code, BVal True : stack, state)
 run (Fals:code, stack, state) =
-    trace ("FalsCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal False : stack) ++ "    State: " ++ state2Str state) $
+    trace ("- Fals \tStack: " ++ stack2Str (BVal True : stack)) $
     run (code, BVal False : stack, state)
 run ((Store var):code, val:stack, (s, store)) =
-    trace ("Store " ++ var ++ " " ++ showStackVal val ++ "     Pre-store: " ++ state2Str (s, store) ++ "    Code: " ++ show code ++     "Stack: " ++ stack2Str stack) $
     let updatedStore = updateStore var val store
-    in trace ("Post-store: " ++ state2Str (s, updatedStore)) $
+    in trace ("- Store " ++ var ++ " " ++ showStackVal val ++ "\t Stack: " ++ stack2Str (val : stack)) $
        run (code, stack, (s, updatedStore))
   where
     updateStore var val [] = [(var, val)]
@@ -92,19 +92,19 @@ run ((Store var):code, val:stack, (s, store)) =
       | otherwise = (v, sVal) : updateStore var val vs
 run ((Fetch varName):code, stack, state@(_, store)) =
     case lookup varName store of
-        Just val -> trace ("Fetch " ++ varName ++ "    Code: " ++ show code ++ "    Stack: " ++ stack2Str (val : stack) ++ "    State: " ++ state2Str state) $ 
+        Just val -> trace ("Fetch " ++ varName ++ "\tStack: " ++ stack2Str (val : stack)) $ 
                     run (code, val : stack, state)
         Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
 run (Neg:code, BVal b : stack, state) =
-    trace ("NegCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal (not b) : stack) ++ "    State: " ++ state2Str state) $
+    trace ("- Neg: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (not b) : stack)) $
     run (code, BVal (not b) : stack, state)
 run (Neg:code, stack, state) =
     error "Neg instruction expects a boolean value on top of the stack"
 run (Equ:code, v1 : v2 : stack, state) =
-    trace ("EquCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal (v1 == v2) : stack) ++ "    State: " ++ state2Str state) $
+    trace ("- Equ: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (v1 == v2): stack)) $
     run (code, BVal (v1 == v2) : stack, state)
 run (Le:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("LeCode: " ++ show code ++ "    Stack: " ++ stack2Str (BVal (n1 <= n2) : stack) ++ "    State: " ++ state2Str state) $
+    trace ("- Le: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (n1 <= n2): stack)) $
     run (code, BVal (n1 <= n2) : stack, state)  -- Ensure that n1 is the last pushed value
 run (Le:_, _, _) =
     error "Le instruction requires two integer values on top of the stack"
@@ -115,7 +115,7 @@ run (Loop condition body:restCode, stack, state) =
             in run (Loop condition body:restCode, bodyStack, bodyState)
        else run (restCode, stack, state)
 run (And:code, BVal b1 : BVal b2 : stack, state) =
-    trace ("AndCode: " ++ show code ++ "  Stack: " ++ stack2Str (BVal (b1 && b2) : stack) ++ "    State: " ++ state2Str state) $
+    trace ("- And: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (b1 && b2): stack)) $
     run (code, BVal (b1 && b2) : stack, state)
 run (And:_, _, _) =
     error "Runtime error: 'And' operation requires two boolean values on top of the stack"
@@ -144,7 +144,11 @@ main = do
   putStrLn "Enter program code:"
   input <- getLine
   let finalState = runProgram input
-  print finalState
+      formattedState = formatState finalState
+  putStrLn formattedState
+
+formatState :: State -> String
+formatState (_, store) = intercalate "," $ map (\(var, val) -> var ++ "=" ++ showStackVal val) store
 
 data Aexp = ALit Integer
           | AVar String
@@ -340,7 +344,6 @@ extractInsideCodeWhile tokens =
 parseWhile :: [String] -> Either String (Stm, [String])
 parseWhile ("while":tokens) = do
     let (conditionTokens, doTokens) = extractInsideCodeWhile tokens
-    trace ("Conditional tokens: " ++ show conditionTokens) $ return ()
     (condition, restConditional) <- parseComplexBexp conditionTokens
     (bodyStatement, rest) <- parseStm doTokens
     Right (SWhile condition bodyStatement, rest)
@@ -363,7 +366,17 @@ parseComplexBexp tokens = do
      -}
 parseComplexBexp :: [String] -> Either String (Bexp, [String])
 parseComplexBexp tokens = do
-    if "(" `elem` tokens && ")" `elem` tokens
+    if head tokens == "not"
+          then if length tokens > 1 && head (tail tokens) == "("
+              then do
+                  let matchingIndex = findMatchingIndex tokens 0 0
+                      (innerBexp, remaining) = splitAt (matchingIndex + 1) tokens
+                  (parsedBexp, remaining) <- parseComplexBexp (tail innerBexp)
+                  Right (BNot parsedBexp, remaining)
+              else do
+                  (bexp, remaining) <- parseComplexBexp (tail tokens)
+                  Right (BNot bexp, remaining)
+    else if "(" `elem` tokens && ")" `elem` tokens
       then if head tokens == "(" && last tokens == ")"
         then parseComplexBexp (init (tail tokens))  -- Removes the outer parentheses and retries
         else Left "Unmatched parentheses" 
@@ -405,13 +418,28 @@ parseComplexBexp tokens = do
                 (restOfBexp, finalTokens) <- parseComplexBexp remaining
                 Right (comparison, finalTokens)
           _ -> error "Unknown comparison operator"
-      else do
+{-     else if head tokens == "not"
+        then if length tokens > 1 && head (tail tokens) == "("
+            then do
+                let matchingIndex = findMatchingIndex tokens 0 0
+                    (innerBexp, remaining) = splitAt matchingIndex tokens
+                trace ("InnerBexp: " ++ show innerBexp ++ ", Remaining: " ++ show remaining) $
+                    do
+                        (parsedBexp, remaining) <- parseComplexBexp (init (tail innerBexp))
+                        Right (BNot parsedBexp, remaining)
+            else do
+                (bexp, remaining) <- parseComplexBexp (tail tokens)
+                Right (BNot bexp, remaining) -}
+    else
+        Left "Unknown operator"
+
+      {- else do
         (operator, before, after) <- parseOperator tokens
         case operator of
           "not" -> do
             (bexp, remaining) <- parseComplexBexp after
             Right (BNot bexp, remaining)
-          _ -> error "Unknown operator"
+          _ -> error "Unknown operator" -}
 
 
 parseOperator :: [String] -> Either String (String, [String], [String])
@@ -479,11 +507,12 @@ runProgram :: String -> State
 runProgram programCode = finalState
   where
     instructions = parse programCode
-    (_, _, finalState) = do
+    (compiledProg, _, finalState) = do
       let compiledProg = compile instructions
           stack = createEmptyStack
           state = createEmptyState
-      run (compiledProg, stack, state)
+      trace ("Compiled Program: " ++ show compiledProg) $ run (compiledProg, stack, state)
+
 
 {- testParser :: String -> (String, String)
 testParser programCode = (instructionStr, finalStateStr)
