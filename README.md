@@ -95,7 +95,8 @@ This part of the assignment involves creating a small imperative programming lan
 
 ### a) Data types that define the structure of the imperative programming language
 
-`Aexp` represents arithmetic expressions, including literals, variables, additions, subtractions, multiplications, divisions, and boolean literals for true and false.
+
+'Aexp' data type models arithmetic expressions with integer literals (`ALit`), variables (`AVar`), and operations like addition (`AAdd`), subtraction (`ASub`), multiplication (`AMul`), and division (`ADiv`).
 
 ```haskell
 data Aexp = ALit Integer
@@ -104,12 +105,11 @@ data Aexp = ALit Integer
           | ASub Aexp Aexp
           | AMul Aexp Aexp
           | ADiv Aexp Aexp
-          | ATrue
-          | AFalse
+
           deriving Show
 ```
 
-`Bexp` defines boolean expressions, encompassing literals, equality and inequality comparisons for arithmetic expressions, logical operations like and/or, and negation.
+`Bexp` data type represents boolean expressions. It includes boolean literals (`BLit`), equality (`BEq`) and less-than-or-equal comparisons (`BLe`) between arithmetic expressions, logical operations like and (`BAnd`), or (`BOr`), and negation (`BNot`), as well as constants for true (`BTrue`) and false (`BFalse`).
 
 ```haskell
 data Bexp = BLit Bool
@@ -134,7 +134,7 @@ data Stm = SAssign String Aexp
 
 ### b) Compiler
 
-`compileAexp` translates arithmetic expressions (`Aexp`) into machine code, handling literals, variables, basic arithmetic operations, and boolean values. 
+`compileAexp` translates arithmetic expressions (`Aexp`) into machine code, handling literals, variables and basic arithmetic operations. 
 
 ```haskell
 compileAexp :: Aexp -> Code
@@ -143,11 +143,9 @@ compileAexp (AVar x) = [Fetch x]
 compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
 compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
 compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
-compileAexp (ATrue) = [Tru]
-compileAexp (AFalse) = [Fals]
 ```
 
-`compileBexp` does the same for boolean expressions (`Bexp`), dealing with literals, equality, inequality, logical operations, and negation. 
+`compileBexp` translates boolean expressions (`Bexp`) into a sequence of machine code instructions. It handles boolean literals (`BLit`), compares arithmetic expressions for equality (`BEq`) and less-than-or-equal (`BLe`), performs logical operations like and (`BAnd`), and applies negation (`BNot`). Additionally, it directly translates boolean constants true (`BTrue`) and false (`BFalse`) into their respective instructions. 
 
 ```haskell
 compileBexp :: Bexp -> Code
@@ -156,6 +154,8 @@ compileBexp (BEq a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Equ]
 compileBexp (BLe a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Le]
 compileBexp (BAnd b1 b2) = compileBexp b1 ++ compileBexp b2 ++ [And]
 compileBexp (BNot b) = compileBexp b ++ [Neg]
+compileBexp (BTrue) = [Tru]
+compileBexp (BFalse) = [Fals]
 ```
 
 `compileStm` converts statements (`Stm`) like assignments, sequences, conditionals, and loops into code. 
@@ -174,3 +174,242 @@ The main `compile` function aggregates these conversions for a list of statement
 compile :: [Stm] -> Code
 compile statements = concatMap compileStm statements
 ```
+
+### c) Parser
+
+This parser translates a program written in a simple language into a structured format that can be further processed or executed, such as compiling into machine code or interpreting directly. The parser handles various elements of programming language syntax, including expressions, control flow statements, and logical operations.
+
+`lexer` splits the input string into tokens, recognizing spaces, alphabets, digits, and special symbols like `:=`, `==`, `<=`, `&&`, `||`, and other single-character tokens.
+
+```haskell
+lexer :: String -> [String]
+lexer [] = []
+lexer (c:cs)
+  | isSpace c = lexer cs
+  | isAlpha c = let (token, rest) = span isAlpha (c:cs) in token : lexer rest
+  | isDigit c = let (token, rest) = span isDigit (c:cs) in token : lexer rest
+  | c == ':' && not (null cs) && head cs == '=' = ":=" : lexer (tail cs)
+  | c == '=' && not (null cs) && head cs == '=' = "==" : lexer (tail cs)
+  | c == '=' = "=" : lexer cs -- This handles single '=' which should be part of '==', etc.
+  | c == '<' && not (null cs) && head cs == '=' = "<=" : lexer (tail cs)
+  | c == '&' && not (null cs) && head cs == '&' = "&&" : lexer (tail cs)
+  | c == '|' && not (null cs) && head cs == '|' = "||" : lexer (tail cs)
+  | c `elem` "+-*/:;(){}" = [c] : lexer cs
+  | otherwise = error $ "Unexpected character: " ++ [c]
+```
+
+`parseStm` and `parseStm'` parse statements, supporting sequences of statements separated by semicolons and handling the end of input.
+
+```haskell
+parseStm :: [String] -> Either String (Stm, [String])
+parseStm [] = Right (Noop, [])
+parseStm tokens = parseStm' tokens []
+
+parseStm' :: [String] -> [Stm] -> Either String (Stm, [String])
+parseStm' [] stms = Right (foldr1 SSeq (reverse stms), [])
+parseStm' tokens stms = do
+  (stm, remainingTokens) <- parseStmPart tokens
+  -- If there are no more tokens after a statement, it's the end of input
+  if null remainingTokens
+    then Right (foldr1 SSeq (reverse (stm : stms)), [])
+    else case remainingTokens of
+      ";" : rest -> parseStm' rest (stm : stms)
+      -- Handle the case where semicolon is missing
+      _ -> Left $ "parseStm': expected semicolon after statement, got " 
+```
+
+`parseStmPart` parses individual parts of statements, such as assignments, if conditions, and while loops.
+
+```haskell
+parseStmPart :: [String] -> Either String (Stm, [String])
+parseStmPart [] = Left "parseStmPart: unexpected end of input"
+parseStmPart ("if" : rest) = parseIf ("if" : rest)
+parseStmPart ("while" : rest) = parseWhile ("while" : rest)
+parseStmPart (var : ":=" : rest) = do
+  (expr, rest') <- parseAexp rest
+  Right (SAssign var expr, rest')
+parseStmPart unexpected = Left $ "Unexpected statement: " ++ unwords unexpected
+```
+
+`parseAexp`, `parseAddSub`, `parseMulDiv`, `parseTerm` parse arithmetic expressions, handling operations like addition, subtraction, multiplication, and division, as well as parentheses, literals, and variables.
+
+```haskell
+parseAexp :: [String] -> Either String (Aexp, [String])
+parseAexp tokens = parseAddSub tokens
+
+parseAddSub :: [String] -> Either String (Aexp, [String])
+parseAddSub tokens = do
+  (term1, rest) <- parseMulDiv tokens
+  parseAddSub' rest term1
+
+parseAddSub' :: [String] -> Aexp -> Either String (Aexp, [String])
+parseAddSub' [] expr = Right (expr, [])
+parseAddSub' (op : tokens) expr
+  | op `elem` ["+", "-"] = do
+    (term, rest) <- parseMulDiv tokens
+    case op of
+      "+" -> parseAddSub' rest (AAdd expr term)
+      "-" -> parseAddSub' rest (ASub expr term)
+      _   -> Left "Unexpected operator"
+  | otherwise = Right (expr, op : tokens)
+
+parseMulDiv :: [String] -> Either String (Aexp, [String])
+parseMulDiv tokens = do
+  (factor1, rest) <- parseTerm tokens
+  parseMulDiv' rest factor1
+
+parseMulDiv' :: [String] -> Aexp -> Either String (Aexp, [String])
+parseMulDiv' [] expr = Right (expr, [])
+parseMulDiv' (op : tokens) expr
+  | op `elem` ["*", "/"] = do
+    (factor, rest) <- parseTerm tokens
+    case op of
+      "*" -> parseMulDiv' rest (AMul expr factor)
+      "/" -> parseMulDiv' rest (ADiv expr factor)
+      _   -> Left "Unexpected operator"
+  | otherwise = Right (expr, op : tokens)
+
+parseTerm :: [String] -> Either String (Aexp, [String])
+parseTerm [] = Left "parseTerm: unexpected end of input"
+parseTerm ("(":rest) = do
+  (exp, restTokens) <- parseAexp rest
+  case restTokens of
+    [] -> Left "parseTerm: missing closing parenthesis"
+    (")":moreTokens) -> Right (exp, moreTokens)
+    _ -> Left "parseTerm: missing closing parenthesis"
+parseTerm (x:xs)
+  | all isDigit x = Right (ALit (read x), xs)
+  | isAlpha (head x) && all isLower x = Right (AVar x, xs)
+  | otherwise = Left $ "parseTerm: unexpected token " ++ x
+```
+
+`parseComplexBexp` parses complex boolean expressions, dealing with logical operators, negation, and comparison operations.
+
+```haskell
+parseComplexBexp :: [String] -> Either String (Bexp, [String])
+parseComplexBexp tokens = do
+    if head tokens == "not"
+          then if length tokens > 1 && head (tail tokens) == "("
+              then do
+                  let matchingIndex = findMatchingIndex tokens 0 0
+                      (innerBexp, remaining) = splitAt (matchingIndex + 1) tokens
+                  (parsedBexp, remaining) <- parseComplexBexp (tail innerBexp)
+                  Right (BNot parsedBexp, remaining)
+              else do
+                  (bexp, remaining) <- parseComplexBexp (tail tokens)
+                  Right (BNot bexp, remaining)
+    else if "(" `elem` tokens && ")" `elem` tokens
+      then if head tokens == "(" && last tokens == ")"
+        then parseComplexBexp (init (tail tokens))  -- Removes the outer parentheses and retries
+        else Left "Unmatched parentheses" 
+    else if "and" `elem` tokens
+      then do
+        let (beforeAnd, (_:afterAnd)) = break (== "and") tokens
+        (exp1, _) <- parseComplexBexp beforeAnd
+        (exp2, remaining) <- parseComplexBexp afterAnd
+        let comparison = BAnd exp1 exp2
+        if null remaining
+          then Right (comparison, remaining)
+          else do
+            (restOfBexp, finalTokens) <- parseComplexBexp remaining
+            Right (comparison, finalTokens)
+    else if head tokens == "true"
+      then Right (BTrue, tail tokens)
+    else if head tokens == "false"
+      then Right (BFalse, tail tokens)
+    else if "==" `elem` tokens || "<=" `elem` tokens
+      then do
+        (operator, before, after) <- parseOperator tokens
+        case operator of
+          "==" -> do
+            (exp1, tokensAfterExp1) <- parseAexp before
+            (exp2, remaining) <- parseAexp after
+            let comparison = BEq exp1 exp2
+            if null remaining
+              then Right (comparison, remaining)
+              else do
+                (restOfBexp, finalTokens) <- parseComplexBexp remaining
+                Right (comparison, finalTokens)
+          "<=" -> do
+            (exp1, tokensAfterExp1) <- parseAexp before
+            (exp2, remaining) <- parseAexp after
+            let comparison = BLe exp1 exp2
+            if null remaining
+              then Right (comparison, remaining)
+              else do
+                (restOfBexp, finalTokens) <- parseComplexBexp remaining
+                Right (comparison, finalTokens)
+          _ -> error "Unknown comparison operator"
+{-     else if head tokens == "not"
+        then if length tokens > 1 && head (tail tokens) == "("
+            then do
+                let matchingIndex = findMatchingIndex tokens 0 0
+                    (innerBexp, remaining) = splitAt matchingIndex tokens
+                trace ("InnerBexp: " ++ show innerBexp ++ ", Remaining: " ++ show remaining) $
+                    do
+                        (parsedBexp, remaining) <- parseComplexBexp (init (tail innerBexp))
+                        Right (BNot parsedBexp, remaining)
+            else do
+                (bexp, remaining) <- parseComplexBexp (tail tokens)
+                Right (BNot bexp, remaining) -}
+    else
+        Left "Unknown operator"
+
+      {- else do
+        (operator, before, after) <- parseOperator tokens
+        case operator of
+          "not" -> do
+            (bexp, remaining) <- parseComplexBexp after
+            Right (BNot bexp, remaining)
+          _ -> error "Unknown operator" -}
+```
+
+`parseOperator` identifies operators within tokens and categorizes them for further processing.
+
+```haskell
+parseOperator :: [String] -> Either String (String, [String], [String])
+parseOperator [] = Left "Expected a comparison operator, but got an empty list."
+parseOperator (op:rest)
+  | op `elem` ["==", "<=", "and", "not"] = Right (op, [], rest)
+  | otherwise = case parseOperator rest of
+                  Right (operator, before, after) -> Right (operator, op:before, after)
+                  Left err -> Left err
+```
+
+`parseIf` and `parseWhile` handle parsing of if and while constructs, respectively, including their conditions and body statements.
+
+```haskell
+parseIf :: [String] -> Either String (Stm, [String])
+parseIf ("if":rest) = do
+    let (conditionTokens, thenTokens, elseTokens) = extractInsideCodeIf rest
+    (condition, _) <- parseComplexBexp conditionTokens
+    (thenStatement, _) <- parseStm thenTokens
+    (elseStatement, remaining) <- parseStm elseTokens
+    Right (SIf condition thenStatement elseStatement, remaining)
+parseIf _ = Left "Invalid input to parseIf"
+
+parseWhile :: [String] -> Either String (Stm, [String])
+parseWhile ("while":tokens) = do
+    let (conditionTokens, doTokens) = extractInsideCodeWhile tokens
+    (condition, restConditional) <- parseComplexBexp conditionTokens
+    (bodyStatement, rest) <- parseStm doTokens
+    Right (SWhile condition bodyStatement, rest)
+```
+
+`parse` is the main parsing function that applies the lexer to the input string and then processes the tokens to form a list of statements.
+
+```haskell
+parse :: String -> [Stm]
+parse str = unsafePerformIO $ do
+  let tokens = lexer str
+  putStrLn $ "Tokens in parse: " ++ show tokens
+  parseUntilEmpty tokens []
+  where
+    parseUntilEmpty :: [String] -> [Stm] -> IO [Stm]
+    parseUntilEmpty [] parsed = return parsed
+    parseUntilEmpty remainingTokens parsed = do
+      case parseStm remainingTokens of
+        Left err -> error $ "Parsing error: " ++ err
+        Right (stm, newRemaining) -> parseUntilEmpty newRemaining (parsed ++ [stm])
+```
+
