@@ -177,9 +177,12 @@ compile statements = concatMap compileStm statements
 
 ### c) Parser
 
-This parser translates a program written in a simple language into a structured format that can be further processed or executed, such as compiling into machine code or interpreting directly. The parser handles various elements of programming language syntax, including expressions, control flow statements, and logical operations.
+The parser is an essential component of our project, responsible for converting a textual representation of our programming language into a structured format. This structured data can then be compiled into machine code or directly interpreted. The parser is designed to understand and enforce the syntax rules of our language, handling various elements like expressions, control flow statements, and logical operations.
 
-`lexer` splits the input string into tokens, recognizing spaces, alphabets, digits, and special symbols like `:=`, `==`, `<=`, `&&`, `||`, and other single-character tokens.
+#### Lexer `lexer`
+
+`lexer` breaks down the input string into a list of tokens. Tokens are the smallest units in the language, like keywords, operators, and identifiers.
+It identifies different types of tokens: spaces, alphabets (for variable names), digits (for numbers), and special symbols for operations like assignment (`:=`), comparison (`==`, `<=`), logical operators (`&&`, `||`), and others.
 
 ```haskell
 lexer :: String -> [String]
@@ -198,12 +201,16 @@ lexer (c:cs)
   | otherwise = error $ "Unexpected character: " ++ [c]
 ```
 
-`parseStm` and `parseStm'` parse statements, supporting sequences of statements separated by semicolons and handling the end of input.
+#### Statement Parsing (`parseStm` and `parseStm'`)
+
+`parseStm` acts as the entry point for statement parsing. It checks for empty input, returning a Noop statement, or calls parseStm' for further processing.
 
 ```haskell
 parseStm :: [String] -> Either String (Stm, [String])
 parseStm [] = Right (Noop, [])
 parseStm tokens = parseStm' tokens []
+
+`parseStm'` handles sequences of statements. It parses individual statements, looks for semicolons as separators, and recursively processes the statements to maintain their sequence. It also checks for syntax errors like missing semicolons.
 
 parseStm' :: [String] -> [Stm] -> Either String (Stm, [String])
 parseStm' [] stms = Right (foldr1 SSeq (reverse stms), [])
@@ -218,7 +225,9 @@ parseStm' tokens stms = do
       _ -> Left $ "parseStm': expected semicolon after statement, got " 
 ```
 
-`parseStmPart` parses individual parts of statements, such as assignments, if conditions, and while loops.
+#### Parsing Individual Statement Parts `parseStmPart`
+
+`parseStmPart` deals with parsing different types of statements, like assignments, `if` conditions, and `while` loops. It uses specific functions like `parseIf` and `parseWhile` for detailed parsing of these constructs.
 
 ```haskell
 parseStmPart :: [String] -> Either String (Stm, [String])
@@ -230,8 +239,9 @@ parseStmPart (var : ":=" : rest) = do
   Right (SAssign var expr, rest')
 parseStmPart unexpected = Left $ "Unexpected statement: " ++ unwords unexpected
 ```
+#### Arithmetic Expression Parsing (`parseAexp`, `parseAddSub`, `parseMulDiv`, `parseTerm`)
 
-`parseAexp`, `parseAddSub`, `parseMulDiv`, `parseTerm` parse arithmetic expressions, handling operations like addition, subtraction, multiplication, and division, as well as parentheses, literals, and variables.
+These functions collectively parse arithmetic expressions. `parseAexp` initiates the process, handling addition and subtraction, while `parseMulDiv` and `parseTerm` delve into multiplication, division, and basic terms.
 
 ```haskell
 parseAexp :: [String] -> Either String (Aexp, [String])
@@ -283,7 +293,9 @@ parseTerm (x:xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ x
 ```
 
-`parseComplexBexp` parses complex boolean expressions, dealing with logical operators, negation, and comparison operations.
+#### Complex Boolean Expression Parsing `parseComplexBexp`
+
+`parseComplexBexp` manages the parsing of boolean expressions, including logical operations, negation, and comparisons. It supports nested expressions and differentiates between various boolean operators.
 
 ```haskell
 parseComplexBexp :: [String] -> Either String (Bexp, [String])
@@ -364,7 +376,9 @@ parseComplexBexp tokens = do
           _ -> error "Unknown operator" -}
 ```
 
-`parseOperator` identifies operators within tokens and categorizes them for further processing.
+#### Helper Functions (`parseOperator`, `parseIf`, `parseWhile`)
+
+`parseOperator` categorizes operators within tokens, aiding in the understanding of expressions.
 
 ```haskell
 parseOperator :: [String] -> Either String (String, [String], [String])
@@ -376,8 +390,7 @@ parseOperator (op:rest)
                   Left err -> Left err
 ```
 
-`parseIf` and `parseWhile` handle parsing of if and while constructs, respectively, including their conditions and body statements.
-
+`parseIf` and `parseWhile` are dedicated to parsing `if` and `while` constructs, handling their conditions and bodies.
 ```haskell
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf ("if":rest) = do
@@ -396,7 +409,9 @@ parseWhile ("while":tokens) = do
     Right (SWhile condition bodyStatement, rest)
 ```
 
-`parse` is the main parsing function that applies the lexer to the input string and then processes the tokens to form a list of statements.
+#### Main Parsing Function `parse`
+
+`parser` combines all parsing functionalities. It applies the lexer and processes tokens to form a sequence of statements, representing the structured format of the input program.
 
 ```haskell
 parse :: String -> [Stm]
