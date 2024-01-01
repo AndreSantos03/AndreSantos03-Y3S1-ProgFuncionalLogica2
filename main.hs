@@ -407,17 +407,7 @@ parseComplexBexp tokens = do
      -}
 parseComplexBexp :: [String] -> Either String (Bexp, [String])
 parseComplexBexp tokens = do
-    if head tokens == "not"
-          then if length tokens > 1 && head (tail tokens) == "("
-              then do
-                  let matchingIndex = findMatchingIndex tokens 0 0
-                      (innerBexp, remaining) = splitAt (matchingIndex + 1) tokens
-                  (parsedBexp, remaining) <- parseComplexBexp (tail innerBexp)
-                  Right (BNot parsedBexp, remaining)
-              else do
-                  (bexp, remaining) <- parseComplexBexp (tail tokens)
-                  Right (BNot bexp, remaining)
-    else if head tokens == "(" && last tokens == ")"
+    if head tokens == "(" && last tokens == ")"
       then do parseComplexBexp (init (tail tokens)) 
     else if "and" `elem` tokens || "=" `elem` tokens
       then do
@@ -430,6 +420,16 @@ parseComplexBexp tokens = do
           else do
             (restOfBexp, finalTokens) <- parseComplexBexp remaining
             Right (comparison, finalTokens)
+    else if head tokens == "not"
+          then if length tokens > 1 && head (tail tokens) == "("
+              then do
+                  let matchingIndex = findMatchingIndex tokens 0 0
+                      (innerBexp, remaining) = splitAt (matchingIndex + 1) tokens
+                  (parsedBexp, remaining) <- parseComplexBexp (tail innerBexp)
+                  Right (BNot parsedBexp, remaining)
+              else do
+                  (bexp, remaining) <- parseComplexBexp (tail tokens)
+                  Right (BNot bexp, remaining)
     else if head tokens == "True"
       then Right (BTrue, tail tokens)
     else if head tokens == "False"
@@ -470,7 +470,7 @@ parseComplexBexp tokens = do
                 (bexp, remaining) <- parseComplexBexp (tail tokens)
                 Right (BNot bexp, remaining) -}
     else
-      Left $ "Unknown operator: " ++ head tokens
+      Left $ "Unknown opersator: " ++ head tokens
 
       {- else do
         (operator, before, after) <- parseOperator tokens
@@ -560,3 +560,29 @@ testParser programCode = (instructionStr, finalStateStr)
     instructionStr = trace ("Instructions generated from parsing: " ++ show instructions) ""
     (_, _, finalState) = run (compile instructions, createEmptyStack, createEmptyState)
     finalStateStr = state2Str finalState
+
+tests :: IO ()
+tests = do
+    let testCases =
+          [ ("x := 5; x := x - 1;", ("", "x=4"))
+          , ("x := 0 - 2;", ("", "x=-2"))
+          , ("if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;", ("", "y=2"))
+          , ("x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;);", ("", "x=1"))
+          , ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;", ("", "x=2"))
+          , ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1; z := x+x;", ("", "x=2,z=4"))
+          , ("x := 44; if x <= 43 then x := 1; else (x := 33; x := x+1;); y := x*2;", ("", "x=34,y=68"))
+          , ("x := 42; if x <= 43 then (x := 33; x := x+1;) else x := 1;", ("", "x=34"))
+          , ("if (1 == 0+1 = 2+1 == 3) then x := 1; else x := 2;", ("", "x=1"))
+          , ("if (1 == 0+1 = (2+1 == 4)) then x := 1; else x := 2;", ("", "x=2"))
+          , ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("", "x=2,y=-10,z=6"))
+          , ("i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);", ("", "fact=3628800,i=1"))
+          ]
+
+    mapM_ (\(testCase, expected) -> do
+            let (instructionStr, finalStateStr) = testParser testCase
+                testResult = if (instructionStr, finalStateStr) == expected
+                    then "--------------------------------\nTest Passed\n--------------------------------"
+                    else "--------------------------------\nTest Failed\n--------------------------------"
+                output = "Test: " ++ testCase ++ " -> " ++ testResult ++ " - Expected: " ++ show expected ++ " | Got: " ++ "(" ++ instructionStr ++ ", " ++ finalStateStr ++ ")"
+            putStrLn output
+        ) testCases
