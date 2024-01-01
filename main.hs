@@ -199,6 +199,8 @@ compileStm (SAssign x a) = compileAexp a ++ [Store x]
 compileStm (SSeq s1 s2) = compileStm s1 ++ compileStm s2
 compileStm (SIf b s1 s2) = compileBexp b ++ [Branch (compileStm s1) (compileStm s2)]
 compileStm (SWhile b s) = [Loop (compileBexp b) (compileStm s)]
+compileStm Noop = [] 
+
 
 -- Compiles a list of statements into Code
 compile :: [Stm] -> Code
