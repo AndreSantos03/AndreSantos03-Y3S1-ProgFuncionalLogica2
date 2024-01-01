@@ -241,7 +241,12 @@ parseStm' tokens stms = do
 -- SSeq should be a statement that represents a sequence of statements
 parseStmPart :: [String] -> Either String (Stm, [String])
 parseStmPart [] = Left "parseStmPart: unexpected end of input"
-parseStmPart ("if" : rest) = parseIf ("if" : rest)
+-- parseStmPart ("if" : rest) = parseIf ("if" : rest)
+parseStmPart ("if" : rest) = do
+    (ifStm, remaining) <- parseIf ("if" : rest)
+    trace ("Remaining after parsing 'if': " ++ show remaining) $ do
+        (restStm, remaining') <- parseStm remaining
+        Right (SSeq ifStm restStm, remaining')
 parseStmPart ("while" : rest) = parseWhile ("while" : rest)
 parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
@@ -302,7 +307,7 @@ takeUntil delim tokens =
   let (beforeDelim, afterDelim) = span (/= delim) tokens
   in (beforeDelim, drop 1 afterDelim)
 
-extractInsideCodeIf :: [String] -> ([String], [String], [String])
+{- extractInsideCodeIf :: [String] -> ([String], [String], [String],[String])
 extractInsideCodeIf tokens =
   let (conditionTokens, afterCondition) = takeUntil "then" tokens
       (thenTokens, afterThen) = takeUntil "else" afterCondition
@@ -312,20 +317,42 @@ extractInsideCodeIf tokens =
                                   then init (tail (take (closingIndex + 1) afterThen)) 
                                   else []
                        else takeWhile (/= ";") afterThen
+      afterElse = drop (length elseTokens + 1) afterThen
       thenTokens' = if not (null thenTokens) && head thenTokens == "("
                        then init (tail thenTokens)
                        else thenTokens
-  in (conditionTokens, thenTokens', elseTokens)
+  in (conditionTokens, thenTokens', elseTokens,afterElse) -}
+
+extractInsideCodeIf :: [String] -> ([String], [String], [String], [String])
+extractInsideCodeIf tokens =
+  let (conditionTokens, afterCondition) = takeUntil "then" tokens
+      (thenTokens, afterThen) = takeUntil "else" afterCondition
+      (elseTokens, afterElse) = if not (null afterThen) && head afterThen == "("
+                                    then let closingIndex = findMatchingIndex afterThen 0 0
+                                             elseTokens' = if closingIndex > 0
+                                                                then init (tail (take (closingIndex + 1) afterThen)) 
+                                                                else []
+                                             afterElse' = drop (length (take (closingIndex + 1) afterThen) + 1) afterThen
+                                         in (elseTokens', afterElse')
+                                    else (takeWhile (/= ";") afterThen, dropWhile (/= ";") afterThen)
+      thenTokens' = if not (null thenTokens) && head thenTokens == "("
+                       then init (tail thenTokens)
+                       else thenTokens
+      afterElse' = if not (null afterThen) && head afterThen == "("
+                      then afterElse
+                      else drop (length elseTokens + 1) afterThen
+  in (conditionTokens, thenTokens', elseTokens, afterElse')
+
 
 
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf ("if":rest) = do
-    let (conditionTokens, thenTokens, elseTokens) = extractInsideCodeIf rest
+    let (conditionTokens, thenTokens, elseTokens,afterElse) = extractInsideCodeIf rest
     (condition, _) <- parseComplexBexp conditionTokens
-    (thenStatement, _) <- parseStm thenTokens
-    (elseStatement, remaining) <- parseStm elseTokens
-    Right (SIf condition thenStatement elseStatement, remaining)
-parseIf _ = Left "Invalid input to parseIf"
+    (thenStatement, thenRemaining) <- parseStm thenTokens
+    (elseStatement, elseRemaining) <- parseStm elseTokens
+    Right (SIf condition thenStatement elseStatement, afterElse)
+
 
 findMatchingIndex :: [String] -> Int -> Int -> Int
 findMatchingIndex tokens count index
@@ -384,9 +411,9 @@ parseComplexBexp tokens = do
       then if head tokens == "(" && last tokens == ")"
         then parseComplexBexp (init (tail tokens))  -- Removes the outer parentheses and retries
         else Left "Unmatched parentheses" 
-    else if "and" `elem` tokens
+    else if "and" `elem` tokens || "=" `elem` tokens
       then do
-        let (beforeAnd, (_:afterAnd)) = break (== "and") tokens
+        let (beforeAnd, (_:afterAnd)) = break (`elem` ["and", "="]) tokens
         (exp1, _) <- parseComplexBexp beforeAnd
         (exp2, remaining) <- parseComplexBexp afterAnd
         let comparison = BAnd exp1 exp2
@@ -395,11 +422,11 @@ parseComplexBexp tokens = do
           else do
             (restOfBexp, finalTokens) <- parseComplexBexp remaining
             Right (comparison, finalTokens)
-    else if head tokens == "true"
+    else if head tokens == "True"
       then Right (BTrue, tail tokens)
-    else if head tokens == "false"
+    else if head tokens == "False"
       then Right (BFalse, tail tokens)
-    else if "==" `elem` tokens || "<=" `elem` tokens
+    else if "==" `elem` tokens || "<=" `elem` tokens 
       then do
         (operator, before, after) <- parseOperator tokens
         case operator of
@@ -435,7 +462,7 @@ parseComplexBexp tokens = do
                 (bexp, remaining) <- parseComplexBexp (tail tokens)
                 Right (BNot bexp, remaining) -}
     else
-        Left "Unknown operator"
+      Left $ "Unknown operator: " ++ head tokens
 
       {- else do
         (operator, before, after) <- parseOperator tokens
