@@ -92,7 +92,7 @@ run ((Store var):code, val:stack, (s, store)) =
       | otherwise = (v, sVal) : updateStore var val vs
 run ((Fetch varName):code, stack, state@(_, store)) =
     case lookup varName store of
-        Just val -> trace ("Fetch " ++ varName ++ "\tStack: " ++ stack2Str (val : stack)) $ 
+        Just val -> trace ("-Fetch " ++ varName ++ "\tStack: " ++ stack2Str (val : stack)) $ 
                     run (code, val : stack, state)
         Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
 run (Neg:code, BVal b : stack, state) =
@@ -101,10 +101,10 @@ run (Neg:code, BVal b : stack, state) =
 run (Neg:code, stack, state) =
     error "Neg instruction expects a boolean value on top of the stack"
 run (Equ:code, v1 : v2 : stack, state) =
-    trace ("- Equ: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (v1 == v2): stack)) $
+    trace ("- Equ " ++ show code ++ "\tStack: " ++ stack2Str (BVal (v1 == v2): stack)) $
     run (code, BVal (v1 == v2) : stack, state)
 run (Le:code, IVal n1 : IVal n2 : stack, state) =
-    trace ("- Le: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (n1 <= n2): stack)) $
+    trace ("- Le "  ++ "\tStack: " ++ stack2Str (BVal (n1 <= n2): stack)) $
     run (code, BVal (n1 <= n2) : stack, state)  -- Ensure that n1 is the last pushed value
 run (Le:_, _, _) =
     error "Le instruction requires two integer values on top of the stack"
@@ -121,8 +121,8 @@ run (And:_, _, _) =
     error "Runtime error: 'And' operation requires two boolean values on top of the stack"
 run ((Branch condCode thenCode):restCode, stack, state) =
   case run (condCode, stack, state) of
-    (_, BVal True : stack', state') -> run (thenCode ++ restCode, stack', state')
-    (_, BVal False : stack', state') -> run (restCode, stack', state') -- No 'elseCode' in this case
+    (_, BVal True : stack', state') -> run (condCode ++ restCode, stack', state')
+    (_, BVal False : stack', state') -> run (thenCode ++ restCode, stack', state') -- No 'elseCode' in this case
     _ -> error "Branch condition did not evaluate to a boolean"
 run (inst : restCode, stack, state) =
   error $ "Unhandled instruction: " ++ show inst
