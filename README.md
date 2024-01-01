@@ -432,3 +432,6 @@ parse str = unsafePerformIO $ do
         Right (stm, newRemaining) -> parseUntilEmpty newRemaining (parsed ++ [stm])
 ```
 
+## Conclusion
+
+This project was an enriching journey into the realms of programming language design and computational theory. We successfully implemented a low-level machine capable of basic arithmetic and boolean operations, accompanied by a simple imperative programming language. This endeavor enhanced our understanding of Haskell, particularly in creating structured data types and developing a compiler and parser. It bridged the gap between theoretical concepts and practical application, offering valuable insights into the intricacies of software development and computational processes. Overall, the project was a testament to the power of Haskell in handling complex tasks and deepened our appreciation for the nuances of computer science.
