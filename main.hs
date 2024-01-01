@@ -306,12 +306,16 @@ extractInsideCodeIf :: [String] -> ([String], [String], [String])
 extractInsideCodeIf tokens =
   let (conditionTokens, afterCondition) = takeUntil "then" tokens
       (thenTokens, afterThen) = takeUntil "else" afterCondition
-      closingIndex = findMatchingIndex afterThen 0 0
-      elseTokens = if closingIndex > 0
-                     {- then take (closingIndex + 1) afterCondition -}
-                    then init (tail (take (closingIndex + 1) afterThen)) 
-                    else []
-  in (conditionTokens, thenTokens, elseTokens)
+      elseTokens = if not (null afterThen) && head afterThen == "("
+                       then let closingIndex = findMatchingIndex afterThen 0 0
+                            in if closingIndex > 0
+                                  then init (tail (take (closingIndex + 1) afterThen)) 
+                                  else []
+                       else takeWhile (/= ";") afterThen
+      thenTokens' = if not (null thenTokens) && head thenTokens == "("
+                       then init (tail thenTokens)
+                       else thenTokens
+  in (conditionTokens, thenTokens', elseTokens)
 
 
 parseIf :: [String] -> Either String (Stm, [String])
@@ -514,10 +518,10 @@ runProgram programCode = finalState
       trace ("Compiled Program: " ++ show compiledProg) $ run (compiledProg, stack, state)
 
 
-{- testParser :: String -> (String, String)
+testParser :: String -> (String, String)
 testParser programCode = (instructionStr, finalStateStr)
   where
     instructions = parse programCode
     instructionStr = trace ("Instructions generated from parsing: " ++ show instructions) ""
     (_, _, finalState) = run (compile instructions, createEmptyStack, createEmptyState)
-    finalStateStr = state2Str finalState -}
+    finalStateStr = state2Str finalState
