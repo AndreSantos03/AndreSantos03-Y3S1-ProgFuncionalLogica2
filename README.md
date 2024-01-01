@@ -210,7 +210,11 @@ parseStm :: [String] -> Either String (Stm, [String])
 parseStm [] = Right (Noop, [])
 parseStm tokens = parseStm' tokens []
 
+```
+
 `parseStm'` handles sequences of statements. It parses individual statements, looks for semicolons as separators, and recursively processes the statements to maintain their sequence. It also checks for syntax errors like missing semicolons.
+
+```haskell
 
 parseStm' :: [String] -> [Stm] -> Either String (Stm, [String])
 parseStm' [] stms = Right (foldr1 SSeq (reverse stms), [])
