@@ -89,6 +89,169 @@ state2Str (_, store) =
     showVarVal (var, BVal False) = var ++ "=False"
 ```
 
+### g) Run
+
+```haskell
+run :: (Code, Stack, State) -> (Code, Stack, State)
+```
+
+The run function is the core of our interpreter for the low-level machine in Haskell. It takes a tuple of code, stack, and state, and recursively executes the instructions defined in the code. Here’s a breakdown of how it functions:
+
+#### Base Case
+
+When the code list is empty, the function returns the current stack and state, indicating the end of execution.
+
+```haskell
+run ([], stack, state) = ([], stack, state)
+```
+
+#### Push Operation
+
+For a `Push` instruction, it adds the given number onto the stack and continues execution with the remaining code.
+
+```haskell
+run ((Push n):code, stack, state) =
+    trace ("- Push " ++ show n ++ "\tStack: " ++ stack2Str (IVal n : stack)) $
+    run (code, IVal n : stack, state)
+```
+
+#### Arithmetic Operations (`Add`, `Sub`, `Mult`)
+
+These operations take the top two integers from the stack, perform the respective arithmetic operation, and push the result back onto the stack.
+
+```haskell
+run (Add:code, IVal n1 : IVal n2 : stack, state) =
+    trace ("- Add " ++ show (n1 + n2) ++ "\tStack: " ++ stack2Str (IVal (n1 + n2) : stack)) $
+    run (code, IVal (n1 + n2) : stack, state)
+run (Sub:code, IVal n1 : IVal n2 : stack, state) =
+    trace ("- Sub " ++ show (n1 + n2) ++ "\tStack: " ++ stack2Str (IVal (n1 + n2) : stack)) $
+    run (code, IVal (n1 - n2) : stack, state)
+run (Mult:code, IVal n1 : IVal n2 : stack, state) =
+    trace ("- Mult " ++ show (n1 + n2) ++ "\tStack: " ++ stack2Str (IVal (n1 + n2) : stack)) $
+    run (code, IVal (n1 * n2) : stack, state)
+```
+
+#### Boolean Constants (Tru, Fals)
+
+For `Tru` and `Fals` instructions, it pushes the corresponding Boolean value onto the stack.
+
+```haskell
+run (Tru:code, stack, state) =
+    trace ("- Tru \tStack: " ++ stack2Str (BVal True : stack)) $
+    run (code, BVal True : stack, state)
+run (Fals:code, stack, state) =
+    trace ("- Fals \tStack: " ++ stack2Str (BVal True : stack)) $
+    run (code, BVal False : stack, state)
+```
+
+#### Store and Fetch Operations
+
+`Store` updates the state with a new or existing variable and its value.
+
+```haskell
+run ((Store var):code, val:stack, (s, store)) =
+    let updatedStore = updateStore var val store
+    in trace ("- Store " ++ var ++ " " ++ showStackVal val ++ "\t Stack: " ++ stack2Str (val : stack)) $
+       run (code, stack, (s, updatedStore))
+  where
+    updateStore var val [] = [(var, val)]
+    updateStore var val ((v,sVal):vs)
+      | v == var  = (var, val) : vs
+      | otherwise = (v, sVal) : updateStore var val vs
+```
+
+`Fetch` retrieves a value from the state and pushes it onto the stack.
+
+```haskell
+run ((Fetch varName):code, stack, state@(_, store)) =
+    case lookup varName store of
+        Just val -> trace ("-Fetch " ++ varName ++ "\tStack: " ++ stack2Str (val : stack)) $ 
+                    run (code, val : stack, state)
+        Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
+```
+
+#### Negation
+
+`Neg` negates a Boolean value on the stack.
+
+```haskell
+run (Neg:code, BVal b : stack, state) =
+    trace ("- Neg: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (not b) : stack)) $
+    run (code, BVal (not b) : stack, state)
+run (Neg:code, stack, state) =
+    error "Neg instruction expects a boolean value on top of the stack"
+```
+
+#### Equality (`Equ`) and Less-Than-or-Equal (`Le`):
+
+`Equ` checks for equality between two top values on the stack.
+
+```haskell
+run (Equ:code, v1 : v2 : stack, state) =
+    trace ("- Equ " ++ show code ++ "\tStack: " ++ stack2Str (BVal (v1 == v2): stack)) $
+    run (code, BVal (v1 == v2) : stack, state)
+```
+
+`Le` compares two integers for the less-than-or-equal relation.
+
+```haskell
+run (Le:code, IVal n1 : IVal n2 : stack, state) =
+    trace ("- Le "  ++ "\tStack: " ++ stack2Str (BVal (n1 <= n2): stack)) $
+    run (code, BVal (n1 <= n2) : stack, state)  -- Ensure that n1 is the last pushed value
+run (Le:_, _, _) =
+    error "Le instruction requires two integer values on top of the stack"
+```
+
+#### Logical And
+
+`And` It performs a logical AND operation on the top two Boolean values from the stack.
+
+```haskell
+run (And:code, BVal b1 : BVal b2 : stack, state) =
+    trace ("- And: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (b1 && b2): stack)) $
+    run (code, BVal (b1 && b2) : stack, state)
+run (And:_, _, _) =
+    error "Runtime error: 'And' operation requires two boolean values on top of the stack"
+```
+
+#### Branching
+
+`Branch` executes either the 'then' code or the rest of the code based on the condition evaluated.
+
+```haskell
+run ((Branch condCode thenCode):restCode, stack, state) =
+  case run (condCode, stack, state) of
+    (_, BVal True : stack', state') -> run (condCode ++ restCode, stack', state')
+    (_, BVal False : stack', state') -> run (thenCode ++ restCode, stack', state') -- No 'elseCode' in this case
+    _ -> error "Branch condition did not evaluate to a boolean"
+```
+
+#### Looping 
+
+`Loop` continuously executes the body of the loop as long as the condition holds true.
+
+```haskell
+run (Loop condition body:restCode, stack, state) = 
+    let (_, conditionStack, _) = run (condition, stack, state)
+    in if getConditionResult conditionStack
+       then let (_, bodyStack, bodyState) = run (body, stack, state)
+            in run (Loop condition body:restCode, bodyStack, bodyState)
+       else run (restCode, stack, state)
+```
+
+#### Error Handling
+
+The `run` function includes error handling for unexpected cases, like missing stack values or incorrect types for operations.
+
+```haskell
+run (inst : restCode, stack, state) =
+  error $ "Unhandled instruction: " ++ show inst
+```
+
+#### Trace
+
+The `trace` statements are used for debugging and logging, providing visibility into the operation being performed and the state of the stack after each operation.
+
 ## 2. Programming Language Development
 
 This part of the assignment involves creating a small imperative programming language that compiles into instructions for the previously defined low-level machine. It includes arithmetic and boolean expressions, assignments, sequences, conditionals, and loops. Key tasks are defining Haskell data types (`Aexp` for arithmetic expressions, `Bexp` for boolean expressions, and `Stm` for statements) and developing a compiler to translate these high-level constructs into the low-level machine's code. Additionally, a parser is required to convert string representations of programs into structured data, adhering to specific syntactic rules.
