@@ -255,9 +255,16 @@ parseStmPart (var : ":=" : rest) = do
   Right (SAssign var expr, rest')
 parseStmPart unexpected = Left $ "Unexpected statement: " ++ unwords unexpected
 
+{- 
+parseAexp :: [String] -> Either String (Aexp, [String])
+parseAexp tokens = parseAddSub tokens -}
 
 parseAexp :: [String] -> Either String (Aexp, [String])
-parseAexp tokens = parseAddSub tokens
+parseAexp tokens =
+  if not (null tokens) && head tokens == "(" && last tokens == ")"
+    then parseAddSub (init (tail tokens))
+    else parseAddSub tokens
+
 
 parseAddSub :: [String] -> Either String (Aexp, [String])
 parseAddSub tokens = do
@@ -343,7 +350,7 @@ extractInsideCodeIf tokens =
       afterElse' = if not (null afterThen) && head afterThen == "("
                       then afterElse
                       else drop (length elseTokens + 1) afterThen
-  in (conditionTokens, thenTokens', elseTokens, afterElse')
+  in do(conditionTokens, thenTokens', elseTokens, afterElse')
 
 
 
@@ -354,6 +361,7 @@ parseIf ("if":rest) = do
     (thenStatement, thenRemaining) <- parseStm thenTokens
     (elseStatement, elseRemaining) <- parseStm elseTokens
     Right (SIf condition thenStatement elseStatement, afterElse)
+
 
 
 findMatchingIndex :: [String] -> Int -> Int -> Int
@@ -409,10 +417,8 @@ parseComplexBexp tokens = do
               else do
                   (bexp, remaining) <- parseComplexBexp (tail tokens)
                   Right (BNot bexp, remaining)
-    else if "(" `elem` tokens && ")" `elem` tokens
-      then if head tokens == "(" && last tokens == ")"
-        then parseComplexBexp (init (tail tokens))  -- Removes the outer parentheses and retries
-        else Left "Unmatched parentheses" 
+    else if head tokens == "(" && last tokens == ")"
+      then do parseComplexBexp (init (tail tokens)) 
     else if "and" `elem` tokens || "=" `elem` tokens
       then do
         let (beforeAnd, (_:afterAnd)) = break (`elem` ["and", "="]) tokens
