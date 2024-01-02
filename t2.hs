@@ -124,7 +124,7 @@ main = do
 {- Test Compiler auxiliar
 main :: IO ()
 main = do
-    -- Testing compileAexp
+    -- Testing compA
     let expr1 = ALit 5
         expr2 = ALit (-3)
         expr3 = AVar "x"
@@ -134,34 +134,34 @@ main = do
         expr7 = AMul (ALit 6) (ALit 2)
         expr9 = AAdd (ALit 10) (AMul (ALit 2) (AVar "z"))
 
-    putStrLn "Testing compileAexp:"
+    putStrLn "Testing compA:"
     putStrLn "---------------------"
     
     putStrLn "Expression 1:"
-    print $ compileAexp expr1
+    print $ compA expr1
     
     putStrLn "Expression 2:"
-    print $ compileAexp expr2
+    print $ compA expr2
     
     putStrLn "Expression 3:"
-    print $ compileAexp expr3
+    print $ compA expr3
     
     putStrLn "Expression 4:"
-    print $ compileAexp expr4
+    print $ compA expr4
     
     putStrLn "Expression 5:"
-    print $ compileAexp expr5
+    print $ compA expr5
     
     putStrLn "Expression 6:"
-    print $ compileAexp expr6
+    print $ compA expr6
     
     putStrLn "Expression 7:"
-    print $ compileAexp expr7
+    print $ compA expr7
     
     putStrLn "Expression 9:"
-    print $ compileAexp expr9
+    print $ compA expr9
 
-    -- Testing compileBexp
+    -- Testing compB
     let boolExpr1 = BLit True
         boolExpr2 = BLit False
         boolExpr3 = BEq (ALit 5) (ALit 5)
@@ -169,26 +169,26 @@ main = do
         boolExpr5 = BAnd (BLit True) (BLit False)
         boolExpr6 = BNot (BLit True)
 
-    putStrLn "\nTesting compileBexp:"
+    putStrLn "\nTesting compB:"
     putStrLn "---------------------"
     
     putStrLn "Boolean Expression 1:"
-    print $ compileBexp boolExpr1
+    print $ compB boolExpr1
     
     putStrLn "Boolean Expression 2:"
-    print $ compileBexp boolExpr2
+    print $ compB boolExpr2
     
     putStrLn "Boolean Expression 3:"
-    print $ compileBexp boolExpr3
+    print $ compB boolExpr3
     
     putStrLn "Boolean Expression 4:"
-    print $ compileBexp boolExpr4
+    print $ compB boolExpr4
     
     putStrLn "Boolean Expression 5:"
-    print $ compileBexp boolExpr5
+    print $ compB boolExpr5
     
     putStrLn "Boolean Expression 6:"
-    print $ compileBexp boolExpr6
+    print $ compB boolExpr6
 -}
 {- Lexer Test
 main :: IO ()

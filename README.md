@@ -295,38 +295,38 @@ data Stm = SAssign String Aexp
 
 ### b) Compiler
 
-`compileAexp` translates arithmetic expressions (`Aexp`) into machine code, handling literals, variables and basic arithmetic operations. 
+`compA` translates arithmetic expressions (`Aexp`) into machine code, handling literals, variables and basic arithmetic operations. 
 
 ```haskell
-compileAexp :: Aexp -> Code
-compileAexp (ALit n) = [Push n]
-compileAexp (AVar x) = [Fetch x]
-compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
-compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
-compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
+compA :: Aexp -> Code
+compA (ALit n) = [Push n]
+compA (AVar x) = [Fetch x]
+compA (AAdd a1 a2) = compA a2 ++ compA a1 ++ [Add]
+compA (ASub a1 a2) = compA a2 ++ compA a1 ++ [Sub]
+compA (AMul a1 a2) = compA a2 ++ compA a1 ++ [Mult]
 ```
 
-`compileBexp` translates boolean expressions (`Bexp`) into a sequence of machine code instructions. It handles boolean literals (`BLit`), compares arithmetic expressions for equality (`BEq`) and less-than-or-equal (`BLe`), performs logical operations like and (`BAnd`), and applies negation (`BNot`). Additionally, it directly translates boolean constants true (`BTrue`) and false (`BFalse`) into their respective instructions. 
+`compB` translates boolean expressions (`Bexp`) into a sequence of machine code instructions. It handles boolean literals (`BLit`), compares arithmetic expressions for equality (`BEq`) and less-than-or-equal (`BLe`), performs logical operations like and (`BAnd`), and applies negation (`BNot`). Additionally, it directly translates boolean constants true (`BTrue`) and false (`BFalse`) into their respective instructions. 
 
 ```haskell
-compileBexp :: Bexp -> Code
-compileBexp (BLit b) = [if b then Tru else Fals]
-compileBexp (BEq a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Equ]
-compileBexp (BLe a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Le]
-compileBexp (BAnd b1 b2) = compileBexp b1 ++ compileBexp b2 ++ [And]
-compileBexp (BNot b) = compileBexp b ++ [Neg]
-compileBexp (BTrue) = [Tru]
-compileBexp (BFalse) = [Fals]
+compB :: Bexp -> Code
+compB (BLit b) = [if b then Tru else Fals]
+compB (BEq a1 a2) = compA a2 ++ compA a1 ++ [Equ]
+compB (BLe a1 a2) = compA a2 ++ compA a1 ++ [Le]
+compB (BAnd b1 b2) = compB b1 ++ compB b2 ++ [And]
+compB (BNot b) = compB b ++ [Neg]
+compB (BTrue) = [Tru]
+compB (BFalse) = [Fals]
 ```
 
 `compileStm` converts statements (`Stm`) like assignments, sequences, conditionals, and loops into code. 
 
 ```haskell
 compileStm :: Stm -> Code
-compileStm (SAssign x a) = compileAexp a ++ [Store x]
+compileStm (SAssign x a) = compA a ++ [Store x]
 compileStm (SSeq s1 s2) = compileStm s1 ++ compileStm s2
-compileStm (SIf b s1 s2) = compileBexp b ++ [Branch (compileStm s1) (compileStm s2)]
-compileStm (SWhile b s) = [Loop (compileBexp b) (compileStm s)]
+compileStm (SIf b s1 s2) = compB b ++ [Branch (compileStm s1) (compileStm s2)]
+compileStm (SWhile b s) = [Loop (compB b) (compileStm s)]
 ```
 
 The main `compile` function aggregates these conversions for a list of statements, forming the compiled program.

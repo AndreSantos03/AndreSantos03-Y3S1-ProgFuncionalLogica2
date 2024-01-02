@@ -25,43 +25,51 @@ ff = TVal "ff"
 
 type State = (Stack, [(String, StackVal)])
 
+-- Creates an empty stack represented as a list
 createEmptyStack :: Stack
 createEmptyStack = []
 
+-- Creates an empty state tuple containing an empty stack and an empty list
 createEmptyState :: State
 createEmptyState = (createEmptyStack, [])
 
+-- Converts a stack to a printable string representation
 stack2Str :: Stack -> String
 stack2Str stack = intercalate "," (map showStackVal stack)
 
-
+-- Converts a stack value to its printable string representation
 showStackVal :: StackVal -> String
 showStackVal (IVal n) = show n
 showStackVal (BVal True) = "True"
 showStackVal (BVal False) = "False"
 
+-- Converts a state to a printable string representation
 state2Str :: State -> String
 state2Str (_, store) =
     intercalate "," . map showVarVal . sortBy (comparing fst) $ store
   where
+    -- Converts variable-value pairs to a printable string
     showVarVal :: (String, StackVal) -> String
     showVarVal (var, IVal n) = var ++ "=" ++ show n
     showVarVal (var, BVal True) = var ++ "=True"
     showVarVal (var, BVal False) = var ++ "=False"
-    showVarVal (var, TVal s) = var ++ "=" ++ s  -- This line can actually be removed if you're not using TVal anymore.
+    showVarVal (var, TVal s) = var ++ "=" ++ s
 
+-- Evaluates a condition code using a provided state and returns a boolean value
 evaluateCondition :: Code -> State -> Bool
 evaluateCondition condition state = 
-  let (_, stack, _) = run (condition, [], state) -- You might need to adjust this call according to how 'run' is defined
+  let (_, stack, _) = run (condition, [], state) 
   in case stack of
-       (BVal b : _) -> not b -- Assuming the condition leaves a boolean on top of the stack indicating whether to exit the loop
+       (BVal b : _) -> not b
        _ -> error "Condition code did not leave a boolean value on the stack"
+
 
 -- Assuming the top of the stack is a BVal containing the condition result
 getConditionResult :: Stack -> Bool
 getConditionResult (BVal result : _) = result
 getConditionResult _ = error "Condition did not evaluate to a boolean value"
 
+-- Runs the code with a provided stack and state
 run :: (Code, Stack, State) -> (Code, Stack, State)
 run ([], stack, state) = ([], stack, state)
 run ((Push n):code, stack, state) =
@@ -129,17 +137,15 @@ run (inst : restCode, stack, state) =
   error $ "Unhandled instruction: " ++ show inst
 
 
--- Implement other instructions as needed.
 
-
-
+-- Used to test bare instructions
 testAssembler :: Code -> (String, String)
 testAssembler code = (stack2Str stack, state2Str state)
   where (_,stack,state) = run(code, createEmptyStack, createEmptyState)
 
 
 
-
+--Main function that handles any type of user input
 main :: IO ()
 main = do
   putStrLn "Enter program code:"
@@ -148,6 +154,7 @@ main = do
       formattedState = formatState finalState
   putStrLn formattedState
 
+--Used to give a pretty version of final state
 formatState :: State -> String
 formatState (_, store) = intercalate "," $ map (\(var, val) -> var ++ "=" ++ showStackVal val) store
 
@@ -177,29 +184,30 @@ data Stm = SAssign String Aexp
          | Noop
          deriving Show
 
-compileAexp :: Aexp -> Code
-compileAexp (ALit n) = [Push n]
-compileAexp (AVar x) = [Fetch x]
-compileAexp (AAdd a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Add]
-compileAexp (ASub a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Sub]
-compileAexp (AMul a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Mult]
+-- Compiles an arithmetic expression into a sequence of instructions (Code)
+compA :: Aexp -> Code
+compA (ALit n) = [Push n]
+compA (AVar x) = [Fetch x]
+compA (AAdd a1 a2) = compA a2 ++ compA a1 ++ [Add]
+compA (ASub a1 a2) = compA a2 ++ compA a1 ++ [Sub]
+compA (AMul a1 a2) = compA a2 ++ compA a1 ++ [Mult]
 
-
-compileBexp :: Bexp -> Code
-compileBexp (BLit b) = [if b then Tru else Fals]
-compileBexp (BEq a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Equ]
-compileBexp (BLe a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Le]
-compileBexp (BAnd b1 b2) = compileBexp b2 ++ compileBexp b1 ++ [And]
-compileBexp (BNot b) = compileBexp b ++ [Neg]
-compileBexp (BTrue) = [Tru]
-compileBexp (BFalse) = [Fals]
+-- Compiles a boolean expression into a sequence of instructions (Code)
+compB :: Bexp -> Code
+compB (BLit b) = [if b then Tru else Fals]
+compB (BEq a1 a2) = compA a2 ++ compA a1 ++ [Equ]
+compB (BLe a1 a2) = compA a2 ++ compA a1 ++ [Le]
+compB (BAnd b1 b2) = compB b2 ++ compB b1 ++ [And]
+compB (BNot b) = compB b ++ [Neg]
+compB (BTrue) = [Tru]
+compB (BFalse) = [Fals]
 
 -- Compiles a single statement into Code
 compileStm :: Stm -> Code
-compileStm (SAssign x a) = compileAexp a ++ [Store x]
+compileStm (SAssign x a) = compA a ++ [Store x]
 compileStm (SSeq s1 s2) = compileStm s1 ++ compileStm s2
-compileStm (SIf b s1 s2) = compileBexp b ++ [Branch (compileStm s1) (compileStm s2)]
-compileStm (SWhile b s) = [Loop (compileBexp b) (compileStm s)]
+compileStm (SIf b s1 s2) = compB b ++ [Branch (compileStm s1) (compileStm s2)]
+compileStm (SWhile b s) = [Loop (compB b) (compileStm s)]
 compileStm Noop = [] 
 
 
@@ -208,7 +216,7 @@ compile :: [Stm] -> Code
 compile statements = concatMap compileStm statements
 
 
-
+-- Transforms the string of code into tokens
 lexer :: String -> [String]
 lexer [] = []
 lexer (c:cs)
@@ -217,34 +225,28 @@ lexer (c:cs)
   | isDigit c = let (token, rest) = span isDigit (c:cs) in token : lexer rest
   | c == ':' && not (null cs) && head cs == '=' = ":=" : lexer (tail cs)
   | c == '=' && not (null cs) && head cs == '=' = "==" : lexer (tail cs)
-  | c == '=' = "=" : lexer cs -- This handles single '=' which should be part of '==', etc.
+  | c == '=' = "=" : lexer cs
   | c == '<' && not (null cs) && head cs == '=' = "<=" : lexer (tail cs)
   | c == '&' && not (null cs) && head cs == '&' = "&&" : lexer (tail cs)
   | c == '|' && not (null cs) && head cs == '|' = "||" : lexer (tail cs)
   | c `elem` "+-*/:;(){}" = [c] : lexer cs
   | otherwise = error $ "Unexpected character: " ++ [c]
 
-
+--Main Function for parting statements, redirects to either arithmetics or boolean expressions handling
 parseStm :: [String] -> Either String (Stm, [String])
 parseStm [] = Right (Noop, [])
 parseStm tokens = parseStm' tokens []
-
 parseStm' :: [String] -> [Stm] -> Either String (Stm, [String])
 parseStm' [] stms = Right (foldr1 SSeq (reverse stms), [])
 parseStm' tokens stms = do
   (stm, remainingTokens) <- parseStmPart tokens
-  -- If there are no more tokens after a statement, it's the end of input
   if null remainingTokens
     then Right (foldr1 SSeq (reverse (stm : stms)), [])
     else case remainingTokens of
       ";" : rest -> parseStm' rest (stm : stms)
-      -- Handle the case where semicolon is missing
       _ -> Left $ "parseStm': expected semicolon after statement, got " ++ show remainingTokens
-
--- SSeq should be a statement that represents a sequence of statements
 parseStmPart :: [String] -> Either String (Stm, [String])
 parseStmPart [] = Left "parseStmPart: unexpected end of input"
--- parseStmPart ("if" : rest) = parseIf ("if" : rest)
 parseStmPart ("if" : rest) = do
     (ifStm, remaining) <- parseIf ("if" : rest)
     trace ("Remaining after parsing 'if': " ++ show remaining) $ do
@@ -256,22 +258,21 @@ parseStmPart (var : ":=" : rest) = do
   Right (SAssign var expr, rest')
 parseStmPart unexpected = Left $ "Unexpected statement: " ++ unwords unexpected
 
-{- 
-parseAexp :: [String] -> Either String (Aexp, [String])
-parseAexp tokens = parseAddSub tokens -}
 
+--Parses arithmetic
 parseAexp :: [String] -> Either String (Aexp, [String])
 parseAexp tokens =
   if not (null tokens) && head tokens == "(" && last tokens == ")"
     then parseAddSub (init (tail tokens))
     else parseAddSub tokens
 
-
+-- Parses addition and subtraction expressions from a list of tokens
 parseAddSub :: [String] -> Either String (Aexp, [String])
 parseAddSub tokens = do
   (term1, rest) <- parseMulDiv tokens
   parseAddSub' rest term1
 
+-- Parses addition and subtraction operators from a list of tokens
 parseAddSub' :: [String] -> Aexp -> Either String (Aexp, [String])
 parseAddSub' [] expr = Right (expr, [])
 parseAddSub' (op : tokens) expr
@@ -283,11 +284,13 @@ parseAddSub' (op : tokens) expr
       _   -> Left "Unexpected operator"
   | otherwise = Right (expr, op : tokens)
 
+-- Parses multiplication and division expressions from a list of tokens
 parseMulDiv :: [String] -> Either String (Aexp, [String])
 parseMulDiv tokens = do
   (factor1, rest) <- parseTerm tokens
   parseMulDiv' rest factor1
 
+-- Parses multiplication and division operators from a list of tokens
 parseMulDiv' :: [String] -> Aexp -> Either String (Aexp, [String])
 parseMulDiv' [] expr = Right (expr, [])
 parseMulDiv' (op : tokens) expr
@@ -299,6 +302,7 @@ parseMulDiv' (op : tokens) expr
       _   -> Left "Unexpected operator"
   | otherwise = Right (expr, op : tokens)
 
+-- Parses individual terms (numbers, variables, or sub-expressions in parentheses)
 parseTerm :: [String] -> Either String (Aexp, [String])
 parseTerm [] = Left "parseTerm: unexpected end of input"
 parseTerm ("(":rest) = do
@@ -312,27 +316,14 @@ parseTerm (x:xs)
   | isAlpha (head x) && all isLower x = Right (AVar x, xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ x
 
+
+-- Used get tokens until a certain one
 takeUntil :: Eq a => a -> [a] -> ([a], [a])
 takeUntil delim tokens =
   let (beforeDelim, afterDelim) = span (/= delim) tokens
   in (beforeDelim, drop 1 afterDelim)
 
-{- extractInsideCodeIf :: [String] -> ([String], [String], [String],[String])
-extractInsideCodeIf tokens =
-  let (conditionTokens, afterCondition) = takeUntil "then" tokens
-      (thenTokens, afterThen) = takeUntil "else" afterCondition
-      elseTokens = if not (null afterThen) && head afterThen == "("
-                       then let closingIndex = findMatchingIndex afterThen 0 0
-                            in if closingIndex > 0
-                                  then init (tail (take (closingIndex + 1) afterThen)) 
-                                  else []
-                       else takeWhile (/= ";") afterThen
-      afterElse = drop (length elseTokens + 1) afterThen
-      thenTokens' = if not (null thenTokens) && head thenTokens == "("
-                       then init (tail thenTokens)
-                       else thenTokens
-  in (conditionTokens, thenTokens', elseTokens,afterElse) -}
-
+-- Divides the if conditional structure into the different parst: if conditional, then and else
 extractInsideCodeIf :: [String] -> ([String], [String], [String], [String])
 extractInsideCodeIf tokens =
   let (conditionTokens, afterCondition) = takeUntil "then" tokens
@@ -354,7 +345,7 @@ extractInsideCodeIf tokens =
   in do(conditionTokens, thenTokens', elseTokens, afterElse')
 
 
-
+-- Used to parse the if structures
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf ("if":rest) = do
     let (conditionTokens, thenTokens, elseTokens,afterElse) = extractInsideCodeIf rest
@@ -364,7 +355,7 @@ parseIf ("if":rest) = do
     Right (SIf condition thenStatement elseStatement, afterElse)
 
 
-
+-- Used for finding the matching parenthese of the first token parenthese
 findMatchingIndex :: [String] -> Int -> Int -> Int
 findMatchingIndex tokens count index
   | null tokens && count /= 0 = error "No matching ending parentheses."
@@ -372,17 +363,17 @@ findMatchingIndex tokens count index
   | head tokens == ")" = if count == 1 then index else findMatchingIndex (tail tokens) (count - 1) (index + 1)
   | otherwise = findMatchingIndex (tail tokens) count (index + 1)
 
-
+-- Divides the while conditional structure into the different parst: while conditional and do
 extractInsideCodeWhile :: [String] -> ([String], [String])
 extractInsideCodeWhile tokens = 
   let (conditionTokens, afterCondition) = takeUntil "do" tokens
       closingIndex = findMatchingIndex afterCondition 0 0
       doTokens = if closingIndex > 0
-                     {- then take (closingIndex + 1) afterCondition -}
                     then init (tail (take (closingIndex + 1) afterCondition)) 
                     else []
   in (conditionTokens,doTokens)   
 
+-- Used to parse the while structures
 parseWhile :: [String] -> Either String (Stm, [String])
 parseWhile ("while":tokens) = do
     let (conditionTokens, doTokens) = extractInsideCodeWhile tokens
@@ -390,22 +381,7 @@ parseWhile ("while":tokens) = do
     (bodyStatement, rest) <- parseStm doTokens
     Right (SWhile condition bodyStatement, rest)
 
-{- parseComplexBexp :: [String] -> Either String (Bexp, [String])
-parseComplexBexp tokens = do
-  (exp1, tokensAfterExp1) <- parseAexp tokens
-  (operator, rest) <- parseOperator tokensAfterExp1
-  (exp2, remaining) <- parseAexp rest
-  let comparison = case operator of
-        "==" -> BEq exp1 exp2
-        "<=" -> BLe exp1 exp2
-        "and" -> BAnd exp1 exp2
-        _    -> error "Unknown comparison operator"
-  if null remaining
-    then Right (comparison, remaining)
-    else do
-      (restOfBexp, finalTokens) <- parseComplexBexp remaining
-      Right (BAnd comparison restOfBexp, finalTokens)
-     -}
+--Used to parse the complex Boolean structures
 parseComplexBexp :: [String] -> Either String (Bexp, [String])
 parseComplexBexp tokens = do
     if head tokens == "(" && last tokens == ")"
@@ -458,30 +434,11 @@ parseComplexBexp tokens = do
                 (restOfBexp, finalTokens) <- parseComplexBexp remaining
                 Right (comparison, finalTokens)
           _ -> error "Unknown comparison operator"
-{-     else if head tokens == "not"
-        then if length tokens > 1 && head (tail tokens) == "("
-            then do
-                let matchingIndex = findMatchingIndex tokens 0 0
-                    (innerBexp, remaining) = splitAt matchingIndex tokens
-                trace ("InnerBexp: " ++ show innerBexp ++ ", Remaining: " ++ show remaining) $
-                    do
-                        (parsedBexp, remaining) <- parseComplexBexp (init (tail innerBexp))
-                        Right (BNot parsedBexp, remaining)
-            else do
-                (bexp, remaining) <- parseComplexBexp (tail tokens)
-                Right (BNot bexp, remaining) -}
     else
       Left $ "Unknown opersator: " ++ head tokens
 
-      {- else do
-        (operator, before, after) <- parseOperator tokens
-        case operator of
-          "not" -> do
-            (bexp, remaining) <- parseComplexBexp after
-            Right (BNot bexp, remaining)
-          _ -> error "Unknown operator" -}
 
-
+-- Parses the first operators from a list of strings
 parseOperator :: [String] -> Either String (String, [String], [String])
 parseOperator [] = Left "Expected a comparison operator, but got an empty list."
 parseOperator (op:rest)
@@ -490,25 +447,9 @@ parseOperator (op:rest)
                   Right (operator, before, after) -> Right (operator, op:before, after)
                   Left err -> Left err
 
-{- parseOperator :: [String] -> Either String (String, [String])
-parseOperator ("==":rest) = Right ("==", rest)
-parseOperator ("<=":rest) = Right ("<=", rest)
-parseOperator ("and":rest) = Right ("and", rest)
-parseOperator ("not":rest) = Right ("not", rest)
-
-parseOperator tokens = Left $ "Expected a comparison operator, but got: " ++ show tokens -}
-
-{- parseBexpTokens ("not":rest) = do
-  (bexp, remaining) <- parseBexpTokens rest
-  Right (BNot bexp, remaining)
-parseBexpTokens (x:"and":xs) = do
-  (b1, remaining1) <- parseBexpTokens [x]
-  (b2, remaining2) <- parseBexpTokens xs
-  Right (BAnd b1 b2, remaining2)
-
- -}
 
 
+-- Main parsing function that loops until code is done
 parse :: String -> [Stm]
 parse str = unsafePerformIO $ do
   let tokens = lexer str
@@ -526,23 +467,8 @@ parse str = unsafePerformIO $ do
 
 
 
-{- parse :: String -> [Stm]
-parse str =
-  let tokens = lexer str
-      tokensStr = trace ("Tokens in parse: " ++ show tokens) tokens
 
-  in case parseStm tokens of
-       Left err -> error $ "Parsing error: " ++ err
-       Right (stms, _) -> stms
- -}
-
- 
-{- testParser :: String -> (String, String)
-testParser programCode = (stack2Str stack, state2Str state)
-  where (_, stack, state) = run(compile (parse programCode), createEmptyStack, createEmptyState)
-
- -}
-
+-- Given a string of code, it runs the parser, the compiler and runs the code itself
 runProgram :: String -> State
 runProgram programCode = finalState
   where
@@ -553,7 +479,7 @@ runProgram programCode = finalState
           state = createEmptyState
       trace ("Compiled Program: " ++ show compiledProg) $ run (compiledProg, stack, state)
 
-
+-- Used for the tests given in the example file
 testParser :: String -> (String, String)
 testParser programCode = (instructionStr, finalStateStr)
   where
@@ -562,6 +488,7 @@ testParser programCode = (instructionStr, finalStateStr)
     (_, _, finalState) = run (compile instructions, createEmptyStack, createEmptyState)
     finalStateStr = state2Str finalState
 
+-- All tests given by professors are compiled here
 tests :: IO ()
 tests = do
     putStrLn ""
