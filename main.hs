@@ -121,9 +121,9 @@ run (And:code, BVal b1 : BVal b2 : stack, state) =
 run (And:_, _, _) =
     error "Runtime error: 'And' operation requires two boolean values on top of the stack"
 run ((Branch condCode thenCode):restCode, stack, state) =
-  case run (condCode, stack, state) of
-    (_, BVal True : stack', state') -> run (condCode ++ restCode, stack', state')
-    (_, BVal False : stack', state') -> run (thenCode ++ restCode, stack', state') -- No 'elseCode' in this case
+  case stack of
+    (BVal True : stack') -> run (condCode ++ restCode, stack', state)
+    (BVal False : stack') -> run (thenCode ++ restCode, stack', state) -- No 'elseCode' in this case
     _ -> error "Branch condition did not evaluate to a boolean"
 run (inst : restCode, stack, state) =
   error $ "Unhandled instruction: " ++ show inst
