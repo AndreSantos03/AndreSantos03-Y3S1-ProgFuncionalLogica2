@@ -89,6 +89,167 @@ state2Str (_, store) =
     showVarVal (var, BVal False) = var ++ "=False"
 ```
 
+### g) Run
+
+```haskell
+run :: (Code, Stack, State) -> (Code, Stack, State)
+```
+
+The `run` function serves as the core interpreter for the low-level machine implemented in Haskell. It processes a tuple consisting of code, stack, and state, and executes the instructions recursively. Here’s a summarized explanation:
+
+#### Base Case
+
+When no code is left to execute (`[]`), the function returns the current stack and state, marking the completion of execution.
+
+```haskell
+run ([], stack, state) = ([], stack, state)
+```
+
+#### Push Operation
+
+Adds a number to the stack and continues execution.
+
+```haskell
+run ((Push n):code, stack, state) =
+    trace ("- Push " ++ show n ++ "\tStack: " ++ stack2Str (IVal n : stack)) $
+    run (code, IVal n : stack, state)
+```
+
+#### Arithmetic Operations (`Add`, `Sub`, `Mult`)
+
+Performs the specified arithmetic operation on the top two integers from the stack and updates the stack with the result.
+
+```haskell
+run (Add:code, IVal n1 : IVal n2 : stack, state) =
+    trace ("- Add " ++ show (n1 + n2) ++ "\tStack: " ++ stack2Str (IVal (n1 + n2) : stack)) $
+    run (code, IVal (n1 + n2) : stack, state)
+run (Sub:code, IVal n1 : IVal n2 : stack, state) =
+    trace ("- Sub " ++ show (n1 + n2) ++ "\tStack: " ++ stack2Str (IVal (n1 + n2) : stack)) $
+    run (code, IVal (n1 - n2) : stack, state)
+run (Mult:code, IVal n1 : IVal n2 : stack, state) =
+    trace ("- Mult " ++ show (n1 + n2) ++ "\tStack: " ++ stack2Str (IVal (n1 + n2) : stack)) $
+    run (code, IVal (n1 * n2) : stack, state)
+```
+
+#### Boolean Constants (Tru, Fals)
+
+Pushes the respective Boolean value onto the stack.
+
+```haskell
+run (Tru:code, stack, state) =
+    trace ("- Tru \tStack: " ++ stack2Str (BVal True : stack)) $
+    run (code, BVal True : stack, state)
+run (Fals:code, stack, state) =
+    trace ("- Fals \tStack: " ++ stack2Str (BVal True : stack)) $
+    run (code, BVal False : stack, state)
+```
+
+#### Store and Fetch Operations
+
+`Store` updates the state with a variable's value.
+
+```haskell
+run ((Store var):code, val:stack, (s, store)) =
+    let updatedStore = updateStore var val store
+    in trace ("- Store " ++ var ++ " " ++ showStackVal val ++ "\t Stack: " ++ stack2Str (val : stack)) $
+       run (code, stack, (s, updatedStore))
+  where
+    updateStore var val [] = [(var, val)]
+    updateStore var val ((v,sVal):vs)
+      | v == var  = (var, val) : vs
+      | otherwise = (v, sVal) : updateStore var val vs
+```
+
+`Fetch` retrieves a variable's value from the state and pushes it onto the stack.
+
+```haskell
+run ((Fetch varName):code, stack, state@(_, store)) =
+    case lookup varName store of
+        Just val -> trace ("-Fetch " ++ varName ++ "\tStack: " ++ stack2Str (val : stack)) $ 
+                    run (code, val : stack, state)
+        Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
+```
+
+#### Negation
+
+`Neg` negates a Boolean value on the stack.
+
+```haskell
+run (Neg:code, BVal b : stack, state) =
+    trace ("- Neg: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (not b) : stack)) $
+    run (code, BVal (not b) : stack, state)
+run (Neg:code, stack, state) =
+    error "Neg instruction expects a boolean value on top of the stack"
+```
+
+#### Equality (`Equ`) and Less-Than-or-Equal (`Le`):
+
+Performs equality and less-than-or-equal comparisons between the top values on the stack.
+
+```haskell
+run (Equ:code, v1 : v2 : stack, state) =
+    trace ("- Equ " ++ show code ++ "\tStack: " ++ stack2Str (BVal (v1 == v2): stack)) $
+    run (code, BVal (v1 == v2) : stack, state)
+
+run (Le:code, IVal n1 : IVal n2 : stack, state) =
+    trace ("- Le "  ++ "\tStack: " ++ stack2Str (BVal (n1 <= n2): stack)) $
+    run (code, BVal (n1 <= n2) : stack, state)  -- Ensure that n1 is the last pushed value
+run (Le:_, _, _) =
+    error "Le instruction requires two integer values on top of the stack"
+```
+
+#### Logical And
+
+`And` performs a logical AND operation on the top two Boolean values from the stack.
+
+```haskell
+run (And:code, BVal b1 : BVal b2 : stack, state) =
+    trace ("- And: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (b1 && b2): stack)) $
+    run (code, BVal (b1 && b2) : stack, state)
+run (And:_, _, _) =
+    error "Runtime error: 'And' operation requires two boolean values on top of the stack"
+```
+
+#### Branching
+
+`Branch` executes conditional code based on the evaluated condition.
+
+```haskell
+run ((Branch condCode thenCode):restCode, stack, state) =
+  case run (condCode, stack, state) of
+    (_, BVal True : stack', state') -> run (condCode ++ restCode, stack', state')
+    (_, BVal False : stack', state') -> run (thenCode ++ restCode, stack', state') -- No 'elseCode' in this case
+    _ -> error "Branch condition did not evaluate to a boolean"
+```
+
+#### Looping 
+
+`Loop` continuously executes the loop body as long as the condition is true.
+
+```haskell
+run (Loop condition body:restCode, stack, state) = 
+    let (_, conditionStack, _) = run (condition, stack, state)
+    in if getConditionResult conditionStack
+       then let (_, bodyStack, bodyState) = run (body, stack, state)
+            in run (Loop condition body:restCode, bodyStack, bodyState)
+       else run (restCode, stack, state)
+```
+
+#### Error Handling
+
+`run` includes a catch-all error handler for unhandled instructions, ensuring any unexpected or unsupported instructions are flagged immediately.
+
+```haskell
+run (inst : restCode, stack, state) =
+  error $ "Unhandled instruction: " ++ show inst
+```
+
+#### Trace
+
+The `trace` statements are used for debugging. These statements provide insights into each operation performed and the state of the stack thereafter.
+
+Overall, the `run` function is a critical component of our Haskell-based interpreter, showcasing the practical application of recursion and pattern matching in functional programming. Its design and implementation highlight the efficiency of Haskell in handling complex computational tasks.
+
 ## 2. Programming Language Development
 
 This part of the assignment involves creating a small imperative programming language that compiles into instructions for the previously defined low-level machine. It includes arithmetic and boolean expressions, assignments, sequences, conditionals, and loops. Key tasks are defining Haskell data types (`Aexp` for arithmetic expressions, `Bexp` for boolean expressions, and `Stm` for statements) and developing a compiler to translate these high-level constructs into the low-level machine's code. Additionally, a parser is required to convert string representations of programs into structured data, adhering to specific syntactic rules.
@@ -177,9 +338,12 @@ compile statements = concatMap compileStm statements
 
 ### c) Parser
 
-This parser translates a program written in a simple language into a structured format that can be further processed or executed, such as compiling into machine code or interpreting directly. The parser handles various elements of programming language syntax, including expressions, control flow statements, and logical operations.
+The parser is an essential component of our project, responsible for converting a textual representation of our programming language into a structured format. This structured data can then be compiled into machine code or directly interpreted. The parser is designed to understand and enforce the syntax rules of our language, handling various elements like expressions, control flow statements, and logical operations.
 
-`lexer` splits the input string into tokens, recognizing spaces, alphabets, digits, and special symbols like `:=`, `==`, `<=`, `&&`, `||`, and other single-character tokens.
+#### Lexer `lexer`
+
+`lexer` breaks down the input string into a list of tokens. Tokens are the smallest units in the language, like keywords, operators, and identifiers.
+It identifies different types of tokens: spaces, alphabets (for variable names), digits (for numbers), and special symbols for operations like assignment (`:=`), comparison (`==`, `<=`), logical operators (`&&`, `||`), and others.
 
 ```haskell
 lexer :: String -> [String]
@@ -198,12 +362,20 @@ lexer (c:cs)
   | otherwise = error $ "Unexpected character: " ++ [c]
 ```
 
-`parseStm` and `parseStm'` parse statements, supporting sequences of statements separated by semicolons and handling the end of input.
+#### Statement Parsing (`parseStm` and `parseStm'`)
+
+`parseStm` acts as the entry point for statement parsing. It checks for empty input, returning a Noop statement, or calls parseStm' for further processing.
 
 ```haskell
 parseStm :: [String] -> Either String (Stm, [String])
 parseStm [] = Right (Noop, [])
 parseStm tokens = parseStm' tokens []
+
+```
+
+`parseStm'` handles sequences of statements. It parses individual statements, looks for semicolons as separators, and recursively processes the statements to maintain their sequence. It also checks for syntax errors like missing semicolons.
+
+```haskell
 
 parseStm' :: [String] -> [Stm] -> Either String (Stm, [String])
 parseStm' [] stms = Right (foldr1 SSeq (reverse stms), [])
@@ -218,7 +390,9 @@ parseStm' tokens stms = do
       _ -> Left $ "parseStm': expected semicolon after statement, got " 
 ```
 
-`parseStmPart` parses individual parts of statements, such as assignments, if conditions, and while loops.
+#### Parsing Individual Statement Parts `parseStmPart`
+
+`parseStmPart` deals with parsing different types of statements, like assignments, `if` conditions, and `while` loops. It uses specific functions like `parseIf` and `parseWhile` for detailed parsing of these constructs.
 
 ```haskell
 parseStmPart :: [String] -> Either String (Stm, [String])
@@ -230,8 +404,9 @@ parseStmPart (var : ":=" : rest) = do
   Right (SAssign var expr, rest')
 parseStmPart unexpected = Left $ "Unexpected statement: " ++ unwords unexpected
 ```
+#### Arithmetic Expression Parsing (`parseAexp`, `parseAddSub`, `parseMulDiv`, `parseTerm`)
 
-`parseAexp`, `parseAddSub`, `parseMulDiv`, `parseTerm` parse arithmetic expressions, handling operations like addition, subtraction, multiplication, and division, as well as parentheses, literals, and variables.
+These functions collectively parse arithmetic expressions. `parseAexp` initiates the process, handling addition and subtraction, while `parseMulDiv` and `parseTerm` delve into multiplication, division, and basic terms.
 
 ```haskell
 parseAexp :: [String] -> Either String (Aexp, [String])
@@ -283,7 +458,9 @@ parseTerm (x:xs)
   | otherwise = Left $ "parseTerm: unexpected token " ++ x
 ```
 
-`parseComplexBexp` parses complex boolean expressions, dealing with logical operators, negation, and comparison operations.
+#### Complex Boolean Expression Parsing `parseComplexBexp`
+
+`parseComplexBexp` manages the parsing of boolean expressions, including logical operations, negation, and comparisons. It supports nested expressions and differentiates between various boolean operators.
 
 ```haskell
 parseComplexBexp :: [String] -> Either String (Bexp, [String])
@@ -364,7 +541,9 @@ parseComplexBexp tokens = do
           _ -> error "Unknown operator" -}
 ```
 
-`parseOperator` identifies operators within tokens and categorizes them for further processing.
+#### Helper Functions (`parseOperator`, `parseIf`, `parseWhile`)
+
+`parseOperator` categorizes operators within tokens, aiding in the understanding of expressions.
 
 ```haskell
 parseOperator :: [String] -> Either String (String, [String], [String])
@@ -376,8 +555,7 @@ parseOperator (op:rest)
                   Left err -> Left err
 ```
 
-`parseIf` and `parseWhile` handle parsing of if and while constructs, respectively, including their conditions and body statements.
-
+`parseIf` and `parseWhile` are dedicated to parsing `if` and `while` constructs, handling their conditions and bodies.
 ```haskell
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf ("if":rest) = do
@@ -396,7 +574,9 @@ parseWhile ("while":tokens) = do
     Right (SWhile condition bodyStatement, rest)
 ```
 
-`parse` is the main parsing function that applies the lexer to the input string and then processes the tokens to form a list of statements.
+#### Main Parsing Function `parse`
+
+`parser` combines all parsing functionalities. It applies the lexer and processes tokens to form a sequence of statements, representing the structured format of the input program.
 
 ```haskell
 parse :: String -> [Stm]
@@ -413,3 +593,6 @@ parse str = unsafePerformIO $ do
         Right (stm, newRemaining) -> parseUntilEmpty newRemaining (parsed ++ [stm])
 ```
 
+## Conclusion
+
+This project was an enriching journey into the realms of programming language design and computational theory. We successfully implemented a low-level machine capable of basic arithmetic and boolean operations, accompanied by a simple imperative programming language. This endeavor enhanced our understanding of Haskell, particularly in creating structured data types and developing a compiler and parser. It bridged the gap between theoretical concepts and practical application, offering valuable insights into the intricacies of software development and computational processes. Overall, the project was a testament to the power of Haskell in handling complex tasks and deepened our appreciation for the nuances of computer science.
