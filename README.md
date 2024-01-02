@@ -95,11 +95,11 @@ state2Str (_, store) =
 run :: (Code, Stack, State) -> (Code, Stack, State)
 ```
 
-The run function is the core of our interpreter for the low-level machine in Haskell. It takes a tuple of code, stack, and state, and recursively executes the instructions defined in the code. Here’s a breakdown of how it functions:
+The `run` function serves as the core interpreter for the low-level machine implemented in Haskell. It processes a tuple consisting of code, stack, and state, and executes the instructions recursively. Here’s a summarized explanation:
 
 #### Base Case
 
-When the code list is empty, the function returns the current stack and state, indicating the end of execution.
+When no code is left to execute (`[]`), the function returns the current stack and state, marking the completion of execution.
 
 ```haskell
 run ([], stack, state) = ([], stack, state)
@@ -107,7 +107,7 @@ run ([], stack, state) = ([], stack, state)
 
 #### Push Operation
 
-For a `Push` instruction, it adds the given number onto the stack and continues execution with the remaining code.
+Adds a number to the stack and continues execution.
 
 ```haskell
 run ((Push n):code, stack, state) =
@@ -117,7 +117,7 @@ run ((Push n):code, stack, state) =
 
 #### Arithmetic Operations (`Add`, `Sub`, `Mult`)
 
-These operations take the top two integers from the stack, perform the respective arithmetic operation, and push the result back onto the stack.
+Performs the specified arithmetic operation on the top two integers from the stack and updates the stack with the result.
 
 ```haskell
 run (Add:code, IVal n1 : IVal n2 : stack, state) =
@@ -133,7 +133,7 @@ run (Mult:code, IVal n1 : IVal n2 : stack, state) =
 
 #### Boolean Constants (Tru, Fals)
 
-For `Tru` and `Fals` instructions, it pushes the corresponding Boolean value onto the stack.
+Pushes the respective Boolean value onto the stack.
 
 ```haskell
 run (Tru:code, stack, state) =
@@ -146,7 +146,7 @@ run (Fals:code, stack, state) =
 
 #### Store and Fetch Operations
 
-`Store` updates the state with a new or existing variable and its value.
+`Store` updates the state with a variable's value.
 
 ```haskell
 run ((Store var):code, val:stack, (s, store)) =
@@ -160,7 +160,7 @@ run ((Store var):code, val:stack, (s, store)) =
       | otherwise = (v, sVal) : updateStore var val vs
 ```
 
-`Fetch` retrieves a value from the state and pushes it onto the stack.
+`Fetch` retrieves a variable's value from the state and pushes it onto the stack.
 
 ```haskell
 run ((Fetch varName):code, stack, state@(_, store)) =
@@ -184,17 +184,13 @@ run (Neg:code, stack, state) =
 
 #### Equality (`Equ`) and Less-Than-or-Equal (`Le`):
 
-`Equ` checks for equality between two top values on the stack.
+Performs equality and less-than-or-equal comparisons between the top values on the stack.
 
 ```haskell
 run (Equ:code, v1 : v2 : stack, state) =
     trace ("- Equ " ++ show code ++ "\tStack: " ++ stack2Str (BVal (v1 == v2): stack)) $
     run (code, BVal (v1 == v2) : stack, state)
-```
 
-`Le` compares two integers for the less-than-or-equal relation.
-
-```haskell
 run (Le:code, IVal n1 : IVal n2 : stack, state) =
     trace ("- Le "  ++ "\tStack: " ++ stack2Str (BVal (n1 <= n2): stack)) $
     run (code, BVal (n1 <= n2) : stack, state)  -- Ensure that n1 is the last pushed value
@@ -204,7 +200,7 @@ run (Le:_, _, _) =
 
 #### Logical And
 
-`And` It performs a logical AND operation on the top two Boolean values from the stack.
+`And` performs a logical AND operation on the top two Boolean values from the stack.
 
 ```haskell
 run (And:code, BVal b1 : BVal b2 : stack, state) =
@@ -216,7 +212,7 @@ run (And:_, _, _) =
 
 #### Branching
 
-`Branch` executes either the 'then' code or the rest of the code based on the condition evaluated.
+`Branch` executes conditional code based on the evaluated condition.
 
 ```haskell
 run ((Branch condCode thenCode):restCode, stack, state) =
@@ -228,7 +224,7 @@ run ((Branch condCode thenCode):restCode, stack, state) =
 
 #### Looping 
 
-`Loop` continuously executes the body of the loop as long as the condition holds true.
+`Loop` continuously executes the loop body as long as the condition is true.
 
 ```haskell
 run (Loop condition body:restCode, stack, state) = 
@@ -241,7 +237,7 @@ run (Loop condition body:restCode, stack, state) =
 
 #### Error Handling
 
-The `run` function includes error handling for unexpected cases, like missing stack values or incorrect types for operations.
+`run` includes a catch-all error handler for unhandled instructions, ensuring any unexpected or unsupported instructions are flagged immediately.
 
 ```haskell
 run (inst : restCode, stack, state) =
@@ -250,7 +246,9 @@ run (inst : restCode, stack, state) =
 
 #### Trace
 
-The `trace` statements are used for debugging and logging, providing visibility into the operation being performed and the state of the stack after each operation.
+The `trace` statements are used for debugging. These statements provide insights into each operation performed and the state of the stack thereafter.
+
+Overall, the `run` function is a critical component of our Haskell-based interpreter, showcasing the practical application of recursion and pattern matching in functional programming. Its design and implementation highlight the efficiency of Haskell in handling complex computational tasks.
 
 ## 2. Programming Language Development
 
