@@ -2,9 +2,9 @@
 
 T03_G07
 
-André Bernardo Ferreira Santos (up202108658)
+André Bernardo Ferreira Santos (up202108658) - 50%
 
-Inês Ferreira de Almeida (up202004513)
+Inês Ferreira de Almeida (up202004513) - 50%
 
 ## Introduction
 
@@ -30,7 +30,7 @@ type Code = [Inst]
 The `StackVal` type in represents values that can be stored on a stack, including integers (`IVal`) and booleans (`BVal`). `Stack` is a list of these `StackVal` items, allowing for diverse data types to be handled in a unified stack structure.
 
 ```haskell
-data StackVal = IVal Integer | BVal Bool deriving (Show, Eq)
+data StackVal = IVal Integer | BVal Bool | TVal String deriving (Show, Eq)
 type Stack = [StackVal]
 ```
 
@@ -83,10 +83,12 @@ state2Str :: State -> String
 state2Str (_, store) =
     intercalate "," . map showVarVal . sortBy (comparing fst) $ store
   where
+    -- Converts variable-value pairs to a printable string
     showVarVal :: (String, StackVal) -> String
     showVarVal (var, IVal n) = var ++ "=" ++ show n
     showVarVal (var, BVal True) = var ++ "=True"
     showVarVal (var, BVal False) = var ++ "=False"
+    showVarVal (var, TVal s) = var ++ "=" ++ s
 ```
 
 ### g) Run
@@ -167,7 +169,7 @@ run ((Fetch varName):code, stack, state@(_, store)) =
     case lookup varName store of
         Just val -> trace ("-Fetch " ++ varName ++ "\tStack: " ++ stack2Str (val : stack)) $ 
                     run (code, val : stack, state)
-        Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
+        Nothing  -> error "Run-time error"  
 ```
 
 #### Negation
@@ -216,9 +218,9 @@ run (And:_, _, _) =
 
 ```haskell
 run ((Branch condCode thenCode):restCode, stack, state) =
-  case run (condCode, stack, state) of
-    (_, BVal True : stack', state') -> run (condCode ++ restCode, stack', state')
-    (_, BVal False : stack', state') -> run (thenCode ++ restCode, stack', state') -- No 'elseCode' in this case
+  case stack of
+    (BVal True : stack') -> run (condCode ++ restCode, stack', state)
+    (BVal False : stack') -> run (thenCode ++ restCode, stack', state) -- No 'elseCode' in this case
     _ -> error "Branch condition did not evaluate to a boolean"
 ```
 
@@ -279,6 +281,8 @@ data Bexp = BLit Bool
           | BAnd Bexp Bexp
           | BOr Bexp Bexp
           | BNot Bexp
+          | BTrue
+          | BFalse
           deriving Show
 ```
 
@@ -327,6 +331,7 @@ compileStm (SAssign x a) = compA a ++ [Store x]
 compileStm (SSeq s1 s2) = compileStm s1 ++ compileStm s2
 compileStm (SIf b s1 s2) = compB b ++ [Branch (compileStm s1) (compileStm s2)]
 compileStm (SWhile b s) = [Loop (compB b) (compileStm s)]
+compileStm Noop = [] 
 ```
 
 The main `compile` function aggregates these conversions for a list of statements, forming the compiled program.
@@ -354,7 +359,7 @@ lexer (c:cs)
   | isDigit c = let (token, rest) = span isDigit (c:cs) in token : lexer rest
   | c == ':' && not (null cs) && head cs == '=' = ":=" : lexer (tail cs)
   | c == '=' && not (null cs) && head cs == '=' = "==" : lexer (tail cs)
-  | c == '=' = "=" : lexer cs -- This handles single '=' which should be part of '==', etc.
+  | c == '=' = "=" : lexer cs
   | c == '<' && not (null cs) && head cs == '=' = "<=" : lexer (tail cs)
   | c == '&' && not (null cs) && head cs == '&' = "&&" : lexer (tail cs)
   | c == '|' && not (null cs) && head cs == '|' = "||" : lexer (tail cs)
@@ -381,12 +386,10 @@ parseStm' :: [String] -> [Stm] -> Either String (Stm, [String])
 parseStm' [] stms = Right (foldr1 SSeq (reverse stms), [])
 parseStm' tokens stms = do
   (stm, remainingTokens) <- parseStmPart tokens
-  -- If there are no more tokens after a statement, it's the end of input
   if null remainingTokens
     then Right (foldr1 SSeq (reverse (stm : stms)), [])
     else case remainingTokens of
       ";" : rest -> parseStm' rest (stm : stms)
-      -- Handle the case where semicolon is missing
       _ -> Left $ "parseStm': expected semicolon after statement, got " 
 ```
 
@@ -397,7 +400,11 @@ parseStm' tokens stms = do
 ```haskell
 parseStmPart :: [String] -> Either String (Stm, [String])
 parseStmPart [] = Left "parseStmPart: unexpected end of input"
-parseStmPart ("if" : rest) = parseIf ("if" : rest)
+parseStmPart ("if" : rest) = do
+    (ifStm, remaining) <- parseIf ("if" : rest)
+    trace ("Remaining after parsing 'if': " ++ show remaining) $ do
+        (restStm, remaining') <- parseStm remaining
+        Right (SSeq ifStm restStm, remaining')
 parseStmPart ("while" : rest) = parseWhile ("while" : rest)
 parseStmPart (var : ":=" : rest) = do
   (expr, rest') <- parseAexp rest
@@ -409,14 +416,20 @@ parseStmPart unexpected = Left $ "Unexpected statement: " ++ unwords unexpected
 These functions collectively parse arithmetic expressions. `parseAexp` initiates the process, handling addition and subtraction, while `parseMulDiv` and `parseTerm` delve into multiplication, division, and basic terms.
 
 ```haskell
+--Parses arithmetic
 parseAexp :: [String] -> Either String (Aexp, [String])
-parseAexp tokens = parseAddSub tokens
+parseAexp tokens =
+  if not (null tokens) && head tokens == "(" && last tokens == ")"
+    then parseAddSub (init (tail tokens))
+    else parseAddSub tokens
 
+-- Parses addition and subtraction expressions from a list of tokens
 parseAddSub :: [String] -> Either String (Aexp, [String])
 parseAddSub tokens = do
   (term1, rest) <- parseMulDiv tokens
   parseAddSub' rest term1
 
+-- Parses addition and subtraction operators from a list of tokens
 parseAddSub' :: [String] -> Aexp -> Either String (Aexp, [String])
 parseAddSub' [] expr = Right (expr, [])
 parseAddSub' (op : tokens) expr
@@ -428,11 +441,13 @@ parseAddSub' (op : tokens) expr
       _   -> Left "Unexpected operator"
   | otherwise = Right (expr, op : tokens)
 
+-- Parses multiplication and division expressions from a list of tokens
 parseMulDiv :: [String] -> Either String (Aexp, [String])
 parseMulDiv tokens = do
   (factor1, rest) <- parseTerm tokens
   parseMulDiv' rest factor1
 
+-- Parses multiplication and division operators from a list of tokens
 parseMulDiv' :: [String] -> Aexp -> Either String (Aexp, [String])
 parseMulDiv' [] expr = Right (expr, [])
 parseMulDiv' (op : tokens) expr
@@ -444,6 +459,7 @@ parseMulDiv' (op : tokens) expr
       _   -> Left "Unexpected operator"
   | otherwise = Right (expr, op : tokens)
 
+-- Parses individual terms (numbers, variables, or sub-expressions in parentheses)
 parseTerm :: [String] -> Either String (Aexp, [String])
 parseTerm [] = Left "parseTerm: unexpected end of input"
 parseTerm ("(":rest) = do
@@ -465,7 +481,20 @@ parseTerm (x:xs)
 ```haskell
 parseComplexBexp :: [String] -> Either String (Bexp, [String])
 parseComplexBexp tokens = do
-    if head tokens == "not"
+    if head tokens == "(" && last tokens == ")"
+      then do parseComplexBexp (init (tail tokens)) 
+    else if "and" `elem` tokens || "=" `elem` tokens
+      then do
+        let (beforeAnd, (_:afterAnd)) = break (`elem` ["and", "="]) tokens
+        (exp1, _) <- parseComplexBexp beforeAnd
+        (exp2, remaining) <- parseComplexBexp afterAnd
+        let comparison = BAnd exp1 exp2
+        if null remaining
+          then Right (comparison, remaining)
+          else do
+            (restOfBexp, finalTokens) <- parseComplexBexp remaining
+            Right (comparison, finalTokens)
+    else if head tokens == "not"
           then if length tokens > 1 && head (tail tokens) == "("
               then do
                   let matchingIndex = findMatchingIndex tokens 0 0
@@ -475,26 +504,11 @@ parseComplexBexp tokens = do
               else do
                   (bexp, remaining) <- parseComplexBexp (tail tokens)
                   Right (BNot bexp, remaining)
-    else if "(" `elem` tokens && ")" `elem` tokens
-      then if head tokens == "(" && last tokens == ")"
-        then parseComplexBexp (init (tail tokens))  -- Removes the outer parentheses and retries
-        else Left "Unmatched parentheses" 
-    else if "and" `elem` tokens
-      then do
-        let (beforeAnd, (_:afterAnd)) = break (== "and") tokens
-        (exp1, _) <- parseComplexBexp beforeAnd
-        (exp2, remaining) <- parseComplexBexp afterAnd
-        let comparison = BAnd exp1 exp2
-        if null remaining
-          then Right (comparison, remaining)
-          else do
-            (restOfBexp, finalTokens) <- parseComplexBexp remaining
-            Right (comparison, finalTokens)
-    else if head tokens == "true"
+    else if head tokens == "True"
       then Right (BTrue, tail tokens)
-    else if head tokens == "false"
+    else if head tokens == "False"
       then Right (BFalse, tail tokens)
-    else if "==" `elem` tokens || "<=" `elem` tokens
+    else if "==" `elem` tokens || "<=" `elem` tokens 
       then do
         (operator, before, after) <- parseOperator tokens
         case operator of
@@ -517,28 +531,8 @@ parseComplexBexp tokens = do
                 (restOfBexp, finalTokens) <- parseComplexBexp remaining
                 Right (comparison, finalTokens)
           _ -> error "Unknown comparison operator"
-{-     else if head tokens == "not"
-        then if length tokens > 1 && head (tail tokens) == "("
-            then do
-                let matchingIndex = findMatchingIndex tokens 0 0
-                    (innerBexp, remaining) = splitAt matchingIndex tokens
-                trace ("InnerBexp: " ++ show innerBexp ++ ", Remaining: " ++ show remaining) $
-                    do
-                        (parsedBexp, remaining) <- parseComplexBexp (init (tail innerBexp))
-                        Right (BNot parsedBexp, remaining)
-            else do
-                (bexp, remaining) <- parseComplexBexp (tail tokens)
-                Right (BNot bexp, remaining) -}
     else
-        Left "Unknown operator"
-
-      {- else do
-        (operator, before, after) <- parseOperator tokens
-        case operator of
-          "not" -> do
-            (bexp, remaining) <- parseComplexBexp after
-            Right (BNot bexp, remaining)
-          _ -> error "Unknown operator" -}
+      Left $ "Unknown opersator: " ++ head tokens
 ```
 
 #### Helper Functions (`parseOperator`, `parseIf`, `parseWhile`)
@@ -559,12 +553,11 @@ parseOperator (op:rest)
 ```haskell
 parseIf :: [String] -> Either String (Stm, [String])
 parseIf ("if":rest) = do
-    let (conditionTokens, thenTokens, elseTokens) = extractInsideCodeIf rest
+    let (conditionTokens, thenTokens, elseTokens,afterElse) = extractInsideCodeIf rest
     (condition, _) <- parseComplexBexp conditionTokens
-    (thenStatement, _) <- parseStm thenTokens
-    (elseStatement, remaining) <- parseStm elseTokens
-    Right (SIf condition thenStatement elseStatement, remaining)
-parseIf _ = Left "Invalid input to parseIf"
+    (thenStatement, thenRemaining) <- parseStm thenTokens
+    (elseStatement, elseRemaining) <- parseStm elseTokens
+    Right (SIf condition thenStatement elseStatement, afterElse)
 
 parseWhile :: [String] -> Either String (Stm, [String])
 parseWhile ("while":tokens) = do
@@ -592,6 +585,36 @@ parse str = unsafePerformIO $ do
         Left err -> error $ "Parsing error: " ++ err
         Right (stm, newRemaining) -> parseUntilEmpty newRemaining (parsed ++ [stm])
 ```
+
+## Interpreter Workflow: From Source Code to Execution
+
+![Alt text for the image](image.png)
+
+The screenshot presents an example of our interpreter executing a program through its various stages:
+
+#### Program Input
+
+The user inputs a program written in a specific programming language designed to be processed by this interpreter.
+
+#### Tokenization 
+This initial phase breaks the program into tokens, which are the fundamental syntactic elements like variables, operators, or literal values. Tokenization is crucial for parsing as it simplifies the syntax into a form that can be easily analyzed.
+
+#### Parsing
+During this stage, the sequence of tokens is analyzed against the language's syntax rules to construct a parse tree or abstract syntax tree. This ensures the program structure is valid and executable.
+
+#### Compilation
+The interpreter then translates the parsed structure into an intermediate or low-level code. This compilation step bridges the gap between high-level language constructs and executable machine instructions.
+
+#### Execution Trace
+
+As the interpreter executes the compiled instructions, each operation is performed sequentially. The execution trace includes:
+
+The specific operation being executed, such as 'push', 'store', or 'fetch'.
+The current state of the execution stack, reflecting temporary values and the progression of control flow.
+Updates to the state of variables within the program, highlighting changes in their values as the program runs.
+Final State: The interpreter concludes its execution by presenting the final state of the program, which may include output values, side effects, or the state of all variables after the last instruction.
+
+This detailed process from program input to execution exemplifies the comprehensive capabilities of our interpreter, demonstrating the systematic approach in which code is processed, interpreted, and executed to yield a final result.
 
 ## Conclusion
 
