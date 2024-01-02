@@ -7,6 +7,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 
 
+
 data Inst =
   Push Integer | Add | Mult | Sub | Tru | Fals | Equ | Le | And | Neg | Fetch String | Store String | 
   Branch Code Code | Loop Code Code
@@ -96,12 +97,12 @@ run ((Fetch varName):code, stack, state@(_, store)) =
                     run (code, val : stack, state)
         Nothing  -> error "Run-time error"  -- Adjusted error message to match the requirement
 run (Neg:code, BVal b : stack, state) =
-    trace ("- Neg: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (not b) : stack)) $
+    trace ("- Neg: "  ++ "\tStack: " ++ stack2Str (BVal (not b) : stack)) $
     run (code, BVal (not b) : stack, state)
 run (Neg:code, stack, state) =
     error "Neg instruction expects a boolean value on top of the stack"
 run (Equ:code, v1 : v2 : stack, state) =
-    trace ("- Equ " ++ show code ++ "\tStack: " ++ stack2Str (BVal (v1 == v2): stack)) $
+    trace ("- Equ "  ++ "\tStack: " ++ stack2Str (BVal (v1 == v2): stack)) $
     run (code, BVal (v1 == v2) : stack, state)
 run (Le:code, IVal n1 : IVal n2 : stack, state) =
     trace ("- Le "  ++ "\tStack: " ++ stack2Str (BVal (n1 <= n2): stack)) $
@@ -115,7 +116,7 @@ run (Loop condition body:restCode, stack, state) =
             in run (Loop condition body:restCode, bodyStack, bodyState)
        else run (restCode, stack, state)
 run (And:code, BVal b1 : BVal b2 : stack, state) =
-    trace ("- And: " ++ show code ++ "\tStack: " ++ stack2Str (BVal (b1 && b2): stack)) $
+    trace ("- And: "++ "\tStack: " ++ stack2Str (BVal (b1 && b2): stack)) $
     run (code, BVal (b1 && b2) : stack, state)
 run (And:_, _, _) =
     error "Runtime error: 'And' operation requires two boolean values on top of the stack"
@@ -188,7 +189,7 @@ compileBexp :: Bexp -> Code
 compileBexp (BLit b) = [if b then Tru else Fals]
 compileBexp (BEq a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Equ]
 compileBexp (BLe a1 a2) = compileAexp a2 ++ compileAexp a1 ++ [Le]
-compileBexp (BAnd b1 b2) = compileBexp b1 ++ compileBexp b2 ++ [And]
+compileBexp (BAnd b1 b2) = compileBexp b2 ++ compileBexp b1 ++ [And]
 compileBexp (BNot b) = compileBexp b ++ [Neg]
 compileBexp (BTrue) = [Tru]
 compileBexp (BFalse) = [Fals]
@@ -563,6 +564,7 @@ testParser programCode = (instructionStr, finalStateStr)
 
 tests :: IO ()
 tests = do
+    putStrLn ""
     let testCases =
           [ ("x := 5; x := x - 1;", ("", "x=4"))
           , ("x := 0 - 2;", ("", "x=-2"))
@@ -581,8 +583,8 @@ tests = do
     mapM_ (\(testCase, expected) -> do
             let (instructionStr, finalStateStr) = testParser testCase
                 testResult = if (instructionStr, finalStateStr) == expected
-                    then "--------------------------------\nTest Passed\n--------------------------------"
-                    else "--------------------------------\nTest Failed\n--------------------------------"
+                    then "--------------------------------\nTest Passed\n--------------------------------\n"
+                    else "--------------------------------\nTest Failed\n--------------------------------\n"
                 output = "Test: " ++ testCase ++ " -> " ++ testResult ++ " - Expected: " ++ show expected ++ " | Got: " ++ "(" ++ instructionStr ++ ", " ++ finalStateStr ++ ")"
             putStrLn output
         ) testCases
