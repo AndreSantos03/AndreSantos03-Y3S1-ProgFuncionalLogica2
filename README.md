@@ -1,5 +1,5 @@
 # TP2 Coursework-Haskell
-
+# Project Grade 16,79/20
 T03_G07
 
 André Bernardo Ferreira Santos (up202108658) - 50%
